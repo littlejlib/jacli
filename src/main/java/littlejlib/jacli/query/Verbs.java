@@ -1,0 +1,223 @@
+package littlejlib.jacli.query;
+
+import module java.base;
+import littlejlib.jacli.core.*;
+
+/** find-usages, go-to-declaration, and source views. */
+public final class Verbs {
+
+    private Verbs() { }
+
+    /**
+     * A store with no reference index cannot answer a usage question, and must not pretend to.
+     * A {@code -T} target is read on demand from a dependency, so "nothing calls it" there would be an
+     * artefact of never having looked — the same failure as reading a stale index as an empty one.
+     */
+    public static Answer needsReferences(Store store, String verb) {
+        return new Answer(Answer.NOT_INDEXED, "# " + verb + " needs a reference index, and this target has none.\n"
+                + "# " + store.meta().line() + '\n'
+                + "# A -T target is read straight from a dependency: its declarations are known, its uses\n"
+                + "# are not, so the honest answer is 'not measured' rather than 'none'.\n"
+                + "# For usage questions, run the verb inside the project that does the using:\n"
+                + "#   cd <your project> && jacli " + verb + " <symbol>\n"
+                + "# which works even for a symbol declared in a dependency. For this target, tree, api,\n"
+                + "# def and src are the verbs that mean something.\n");
+    }
+
+    public static Answer refs(Store store, String specText, Opts opts) {
+        if (!store.meta().hasReferences()) return needsReferences(store, "refs");
+        var spec = Spec.parse(specText);
+        var target = SymbolTarget.resolve(store, spec, opts);
+        if (target.isEmpty()) return unknown(store, spec, "refs");
+        if (target.isAmbiguous() && !opts.all())
+            return Answer.ambiguous(Fmt.candidates(store.root(), candidateDecls(store, target), specText));
+
+        var hits = target.occurrences(store, opts);
+        var soft = target.unresolvedOccurrences(store, opts);
+        var files = hits.stream().map(Occurrence::file).distinct().count();
+        var sb = new StringBuilder(Fmt.meta(subject(target, specText), target.primary(), store.root(), store.meta(),
+                Fmt.plural(hits.size(), "reference", "references") + " in " + Fmt.plural(files, "file", "files")
+                        + (target.expandedBy() > 0
+                                ? " including " + Fmt.plural(target.expandedBy(), "override", "overrides") : "")
+                        + (target.specKeys().size() > 1 ? " across " + target.specKeys().size() + " symbols" : "")));
+        if (hits.isEmpty() && soft.isEmpty()) return empty(store, sb, target, opts);
+        sb.append(Fmt.occurrences(store.root(), hits, opts.limit()));
+        if (!soft.isEmpty()) {
+            sb.append("\n# ").append(soft.size()).append(" further occurrences of the spelling '")
+                    .append(spec.searchName()).append("' could not be resolved to a symbol: ")
+                    .append("they may or may not refer to this one\n");
+            sb.append(Fmt.occurrences(store.root(), soft, Math.min(opts.limit(), 60)));
+        }
+        return Answer.ok(sb.toString());
+    }
+
+    public static Answer def(Store store, String specText, Opts opts) {
+        var spec = Spec.parse(specText);
+        var decls = store.declsMatching(spec, opts);
+        if (decls.isEmpty()) return unknown(store, spec, "def");
+        var sb = new StringBuilder(Fmt.meta(specText, null, store.root(), store.meta(),
+                decls.size() + (decls.size() == 1 ? " declaration" : " declarations")));
+        sb.append(Fmt.decls(store.root(), decls));
+        for (var d : decls) {
+            var subs = store.declsWithSuper(d.key());
+            sb.append("# ").append(Fmt.precise(d)).append(": ");
+            sb.append(store.meta().hasReferences()
+                    ? store.refsTo(d.key()).size() + " references"
+                    : "references not indexed for this target");
+            if (!subs.isEmpty()) sb.append(", ").append(subs.size())
+                    .append(d.kind().isType() ? " subtypes/implementations" : " overriders");
+            sb.append('\n');
+        }
+        return Answer.ok(sb.toString());
+    }
+
+    public static Answer src(Store store, String specText, Opts opts) {
+        var spec = Spec.parse(specText);
+        var decls = store.declsMatching(spec, opts);
+        if (decls.isEmpty()) return unknown(store, spec, "src");
+        var sb = new StringBuilder(Fmt.meta(specText, null, store.root(), store.meta(),
+                Fmt.plural(decls.size(), "declaration", "declarations") + " shown from source"));
+        for (var d : decls.stream().sorted(Comparator.comparing(Decl::file).thenComparingInt(Decl::line)).toList()) {
+            if (d.file() != null && d.file().endsWith(".jar")) {
+                sb.append(fromBytecode(d));
+                continue;
+            }
+            if (d.implicit()) {
+                sb.append('\n').append(d.signature())
+                        .append("\n# generated by the compiler - there is no source to show. Declared by ")
+                        .append(d.ownerKey()).append(" at ").append(Src.abs(store.root(), d.file()))
+                        .append(':').append(d.line()).append('\n');
+                continue;
+            }
+            try {
+                var lines = SourceView.read(Src.abs(store.root(), d.file()));
+                var from = opts.withDoc() ? SourceView.docStart(lines, d.line()) : d.line();
+                sb.append('\n').append(Src.abs(store.root(), d.file())).append(':').append(from)
+                        .append('-').append(d.endLine()).append('\n')
+                        .append(SourceView.slice(lines, from, d.endLine(), opts.numbered()));
+            } catch (RuntimeException e) {
+                sb.append('\n').append("# could not read ").append(d.file()).append(": ").append(e.getMessage()).append('\n');
+            }
+        }
+        return Answer.ok(sb.toString());
+    }
+
+    public static final int BYTECODE_WINDOW = 30;
+
+    /**
+     * A body for a declaration that lives in a jar. The signature came from bytecode exactly; only the
+     * body needs decompiling, and the result is labelled as decompiled because it is a reconstruction
+     * rather than the source that was written.
+     */
+    static String fromBytecode(Decl d) {
+        var jar = Path.of(d.file());
+        var owner = d.kind().isType() ? d.key() : d.ownerKey();
+        var sb = new StringBuilder("\n# " + d.signature() + "\n# decompiled from " + jar.getFileName()
+                + " - a reconstruction, not the original source\n");
+        var java = Decompiler.source(jar, owner, s -> sb.append("# ").append(s).append('\n'));
+        if (java == null) return sb.append("# no source could be produced. Signatures above are still exact.\n")
+                .append("# For real sources: mvn dependency:get -Dartifact=<g>:<a>:<v>:jar:sources\n").toString();
+        if (d.kind().isType()) return sb.append(java).append('\n').toString();
+
+        var lines = List.of(java.split("\n", -1));
+        var at = firstLineContaining(lines, d.name());
+        if (at < 0) return sb.append("# '").append(d.name()).append("' was not located in the decompiled type; ")
+                .append("showing it whole\n").append(java).append('\n').toString();
+        var from = Math.max(1, at - 2);
+        var to = Math.min(lines.size(), at + BYTECODE_WINDOW);
+        sb.append("# decompiled lines ").append(from).append('-').append(to)
+                .append(" of ").append(owner).append('\n');
+        for (var i = from; i <= to; i++) sb.append(lines.get(i - 1)).append('\n');
+        return sb.toString();
+    }
+
+    static int firstLineContaining(List<String> lines, String name) {
+        for (var i = 0; i < lines.size(); i++)
+            if (Src.containsWord(lines.get(i), name)) return i + 1;
+        return -1;
+    }
+
+    /** Several declarations may share one key across overloads only in error; list them all anyway. */
+    static List<Decl> candidateDecls(Store store, SymbolTarget target) {
+        if (!target.decls().isEmpty()) return target.decls();
+        return target.keys().stream().map(store::declByKey).flatMap(Optional::stream).toList();
+    }
+
+    static String subject(SymbolTarget target, String specText) {
+        return target.specKeys().size() == 1 ? target.specKeys().getFirst() : specText;
+    }
+
+    /** Reference targets matching the spec that have no declaration here — declared in a dependency. */
+    static List<String> usedHere(Store store, Spec spec) {
+        if (!store.meta().hasReferences()) return List.of();
+        return store.targetKeysByName(spec.searchName()).stream()
+                .filter(k -> !Keys.isUnresolved(k) && spec.matchesKey(k))
+                .filter(k -> !store.refsTo(k).isEmpty())
+                .toList();
+    }
+
+    static Answer unknown(Store store, Spec spec, String verb) {
+        var m = store.meta();
+        var sb = new StringBuilder("# no symbol matched '" + spec.raw() + "'\n# " + m.line() + '\n');
+        var near = store.declsByName(spec.searchName());
+        if (!near.isEmpty()) {
+            sb.append("# declarations named '").append(spec.searchName()).append("' that did not match the spec:\n");
+            sb.append(Fmt.decls(store.root(), near.size() > 20 ? near.subList(0, 20) : near));
+        } else if (!usedHere(store, spec).isEmpty()) {
+            /* Declared elsewhere but demonstrably used here. Offering discovery hints as though the
+             * name were a typo would re-teach exactly the misconception that refs cannot cross a
+             * project boundary. Say what is true and name the verbs that do work. */
+            var keys = usedHere(store, spec);
+            var uses = keys.stream().mapToInt(k -> store.refsTo(k).size()).sum();
+            sb.append("# '").append(spec.raw()).append("' is NOT DECLARED in this project, but it IS used here")
+                    .append(" - ").append(Fmt.plural(uses, "reference", "references")).append(".\n")
+                    .append("# ").append(verb).append(" needs the declaration; these do not:\n")
+                    .append("#   jacli refs ").append(keys.getFirst()).append('\n')
+                    .append("#   jacli impls ").append(keys.getFirst()).append("      (if it is a type)\n")
+                    .append("# For its declaration and body, point at where it IS declared:\n")
+                    .append("#   jacli ").append(verb).append(" ").append(spec.raw())
+                    .append(" -T <groupId:artifactId:version>   or  -p <that project's dir>\n");
+        } else if (!store.refsTo(Keys.unresolved(spec.searchName())).isEmpty()) {
+            /* On a broken build the spelling occurs but binds to nothing. Saying it is not referenced
+             * either would be strictly false, even though the PARTIAL banner keeps the answer honest. */
+            var soft = store.refsTo(Keys.unresolved(spec.searchName()));
+            sb.append("# '").append(spec.searchName()).append("' is not declared here, and the ")
+                    .append(Fmt.plural(soft.size(), "occurrence", "occurrences"))
+                    .append(" of that spelling could not be bound to any symbol - the project does not\n")
+                    .append("# currently compile, so what it refers to is undetermined rather than absent:\n");
+            sb.append(Fmt.occurrences(store.root(), soft, 20));
+        } else {
+            sb.append("# nothing named '").append(spec.searchName()).append("' is declared or referenced here.\n")
+                    .append("# To discover what does exist:  jacli tree        (packages and type names)\n")
+                    .append("#                               jacli api <pkg>   (declarations in a package)\n")
+                    .append("#                               jacli api --name ").append(spec.searchName())
+                    .append("   (search declaration names)\n");
+        }
+        for (var w : m.warnings()) sb.append("# ! ").append(w).append('\n');
+        return m.tier().isExact() ? Answer.nothing(sb.toString()) : Answer.degradedEmpty(sb.toString());
+    }
+
+    /**
+     * An empty result has to say what was actually established. A {@code --kind} filter that matches
+     * nothing establishes the absence of THAT KIND of use, not of all use — claiming the symbol is
+     * unused when the unfiltered query returns hundreds is the one error direction that costs the
+     * caller a whole reasoning step.
+     */
+    static Answer empty(Store store, StringBuilder sb, SymbolTarget target, Opts opts) {
+        if (!opts.kinds().isEmpty()) {
+            var total = target.totalOccurrences(store);
+            sb.append("# no references of kind ").append(opts.kinds()).append(".");
+            sb.append(total > 0
+                    ? " This symbol HAS " + total + " references of other kinds - drop --kind to see them.\n"
+                    : " It has no references of any kind either.\n");
+            return total > 0 ? Answer.nothing(sb.toString()) : Answer.ok(sb.toString());
+        }
+        sb.append("# no references found.");
+        if (!store.meta().tier().isExact()) {
+            sb.append(" The index is degraded, so this is NOT evidence that none exist.\n");
+            return Answer.degradedEmpty(sb.toString());
+        }
+        sb.append(" The symbol is declared but never used in this project.\n");
+        return Answer.ok(sb.toString());
+    }
+}

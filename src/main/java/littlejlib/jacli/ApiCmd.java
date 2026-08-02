@@ -1,0 +1,67 @@
+package littlejlib.jacli;
+
+import module java.base;
+import littlejlib.jacli.query.*;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Mixin;
+import picocli.CommandLine.Option;
+import picocli.CommandLine.Parameters;
+
+@Command(name = "api", description = "What a type or package offers, with how often each thing is used.",
+        footer = {
+            "",
+            "This is the discovery verb: use it when you know roughly what you want but not what it is",
+            "called. --name searches declaration names, which is a semantic search no text tool can do -",
+            "it matches declarations, never comments, strings or unrelated text.",
+            "",
+            "  jacli api luvs.P                    every public member of P",
+            "  jacli api luvs.P --name flex        just the flex ones",
+            "  jacli api --name flex               anything named *flex* anywhere in the project",
+            "  jacli api luvml.element             the types in that package",
+            "  jacli api luvml.E --doc             with javadoc first sentences",
+            "",
+            "Use counts are shown when the result is small enough to be worth counting; narrow the scope",
+            "or add --name to get them. For a whole unfamiliar library, jacli tree first is cheaper."
+        })
+public final class ApiCmd implements Callable<Integer> {
+
+    @Mixin
+    Common common;
+
+    @Parameters(index = "0", arity = "0..1", paramLabel = "<type-or-package>",
+            description = "A type, or a package prefix. Omit to search the whole project with --name.")
+    String scope;
+
+    @Option(names = "--name", paramLabel = "<substring>",
+            description = "Keep only declarations whose name contains this, case-insensitively.")
+    String name;
+
+    @Option(names = "--doc", description = "Include the javadoc first sentence of each declaration.")
+    boolean doc;
+
+    @Option(names = "--inherited",
+            description = "Everything callable on the type, its own members plus every supertype's, labelled by where each came from.")
+    boolean inherited;
+
+    @Override
+    public Integer call() {
+        try {
+            if (scope == null && name == null) {
+                System.err.println("jacli: give a type or package, or --name <substring>, or both. "
+                        + "jacli tree lists what exists.");
+                return Answer.USAGE;
+            }
+            var store = common.store();
+            var answer = inherited
+                    ? Discover.inherited(store, scope, name, doc, common.opts())
+                    : Discover.api(store, scope, name, doc, common.opts());
+            common.emit(answer.text());
+            return answer.exit();
+        } catch (IllegalStateException e) {
+            System.err.println("jacli: " + e.getMessage());
+            return Answer.NOT_INDEXED;
+        } finally {
+            if (common.ownsDb()) littlejlib.jacli.index.Db.shutdown();
+        }
+    }
+}

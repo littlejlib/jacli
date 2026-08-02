@@ -1,0 +1,40 @@
+jacli (jack-lee) - java assist cli. Compiler-accurate code navigation.
+
+WHAT EXISTS (you don't know the name yet)
+  jacli tree    [<pkg>]    packages and type names - the cheapest look at a project
+  jacli api     <scope>    what a type/package offers, with use counts; --name <substr> searches names
+
+WHAT IS IT (you have a name)
+  jacli def     <symbol>   declaration, signature, javadoc, use counts
+  jacli src     <symbol>   its source, sliced from the file - walk a stack trace frame by frame
+
+HOW IS IT USED
+  jacli refs    <symbol>   every use, resolved: call vs declaration vs comment, right overload
+  jacli callers <symbol>   who calls it, -d N levels up      (ask this before changing a signature)
+  jacli callees <symbol>   what it calls, -d N levels down
+  jacli impls   <type>     what extends/implements it, including indirectly and across projects
+  jacli unused             public API nothing in this project references
+
+SEVERAL PROJECTS AS ONE
+  jacli scope --suggest    propose scopes; jacli scope <name> --add <dir> declares one
+  any verb --scope <name>  answer across the whole family;  --with <dir>  widens one call
+
+DEPENDENCIES (poms only, no network)
+  jacli deps    [-d N]     the closure, with each artifact's origin: central / remote / LOCAL-ONLY / MISSING
+  jacli deps --dependents <groupId:artifactId>    which indexed projects depend on it
+  jacli releasable         could anyone else build this? names every blocker and its fix. exit 1 if blocked
+
+  jacli index [--watch] | projects | cache | status | daemon
+
+A LIBRARY YOU HAVE NOT OPENED
+  jacli tree -T io.github.luvml:luvs:2.0        maven coordinates from ~/.m2, a git URL, or a dir
+  jacli api  -T info.picocli:picocli:4.7.7 --name Option
+  Sources jar if present, else the jar's class files. Read on demand, never indexed.
+
+Symbol: Type | pkg.Type | Type#member | 'Type#method(int,String)' | pkg.Type.method (stack-trace form)
+Works on symbols declared in a DEPENDENCY too:  jacli refs luvx.Frag_I
+Filters: --kind CALL,EXTENDS,...  --overrides  --name <substr> (api)  --doc
+Exit:   0 found - 1 nothing found - 2 usage - 3 ambiguous (candidates listed) - 4 not indexed
+        5 nothing found BUT the index is degraded, so absence is not established
+
+Run `jacli` with no arguments for the full tutorial, or `jacli <verb> --help` for one verb.

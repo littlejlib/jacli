@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>fx</groupId>
+    <artifactId>fixture</artifactId>
+    <version>1.0</version>
+
+    <properties>
+        <keep.version>9.9</keep.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>keep</groupId>
+            <artifactId>plain</artifactId>
+            <version>${keep.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>keep</groupId>
+            <artifactId>bom</artifactId>
+            <version>1.0</version>
+            <type>pom</type>
+        </dependency>
+        <dependency>
+            <groupId>drop</groupId>
+            <artifactId>optional-dep</artifactId>
+            <version>1.0</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>drop</groupId>
+            <artifactId>test-dep</artifactId>
+            <version>1.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>drop</groupId>
+            <artifactId>provided-dep</artifactId>
+            <version>1.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>drop</groupId>
+            <artifactId>unexpandable</artifactId>
+            <version>${nowhere.defined}</version>
+        </dependency>
+    </dependencies>
+</project>

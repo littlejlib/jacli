@@ -1,0 +1,12 @@
+target/
+shade/
+*.aot
+*.aot.config
+prp/
+run.sh
+
+# ArcadeDB server artifacts, written relative to the working directory. Left over from before the
+# switch to DatabaseFactory, which writes none of this. server-users.jsonl holds a root password
+# hash, so it must never be published.
+config/
+log/

@@ -1,0 +1,365 @@
+================================================================================
+jacli (jack-lee) - java assist cli
+Compiler-accurate code navigation over java/maven projects, for coding agents.
+================================================================================
+
+THE SHAPE OF IT
+
+  jacli uses the real javac compiler, so it answers by resolution rather than by
+  text. It knows a declaration from a call from a comment from a string literal,
+  it picks the right overload, and it follows inheritance across project
+  boundaries.
+
+  Three question shapes, three groups of verbs:
+
+    WHAT EXISTS?      tree  api                you don't know the name yet
+    WHAT IS IT?       def  src                 you have a name, you want the thing
+    HOW IS IT USED?   refs  callers  callees  impls  unused
+
+  A worked flow, every call under a second once the project is indexed:
+
+    jacli tree                             64 types in 2 packages - so that's the shape
+    jacli api --name flex                  12 declarations named *flex*, with use counts
+    jacli def luvs.P#flex_direction        both overloads, with counts each
+    jacli src luvs.P#flex_direction        the body, sliced from the file
+    jacli refs luvs.values.FlexDirection   every use, resolved
+    jacli callers luvs.P#flex_direction    who calls it, before you change it
+
+
+WHAT EXISTS - tree, api
+
+  Start here whenever you don't know a name. `tree` is the cheapest thing jacli
+  does: packages and type names, nothing else.
+
+    jacli tree                      every package and the types in it
+    jacli tree luvml.element        one branch
+
+  `api` then shows what a type or package offers, WITH how often each thing is
+  used - which no source renderer can tell you, because that needs the whole
+  project's references.
+
+    jacli api luvs.P                     every public member of P
+    jacli api luvs.P --name flex         just the flex ones
+    jacli api --name flex                anything named *flex* anywhere
+    jacli api luvml.element              the types in that package
+    jacli api luvml.E --doc              with javadoc first sentences
+
+  `api --name` searches declaration NAMES. It matches declarations and never
+  comments, strings or unrelated text, so it surfaces what a text search for the
+  same word buries. It is usually the fastest route from a vague idea to an exact
+  symbol.
+
+  Overloads appear as separate lines, so questions like "why can't I mix these
+  argument types" answer themselves:
+
+    public static CssPropertyFrag flex_direction(luvs.values.FlexDirection value)
+    public static CssPropertyFrag flex_direction(java.lang.CharSequence value)
+
+
+A LIBRARY YOU HAVE NOT OPENED - the -T target
+
+  The verbs above work on the project you are in. -T points them at something else
+  entirely, which is the moment an API surface is worth most: a dependency you have
+  never read.
+
+    jacli tree -T io.github.luvml:luvs:2.0
+    jacli api  -T io.github.luvml:luvs:2.0 --name flex
+    jacli api  -T info.picocli:picocli:4.7.7 --name Option
+    jacli tree -T https://github.com/someone/somelib
+
+  A target is maven coordinates from your local ~/.m2, a git or GitHub URL, or a
+  directory. jacli takes the best available route and always says which one:
+
+    sources jar present   ->  extracted and parsed. Real parameter names, real
+                              line numbers, javadoc. SYNTACTIC, since a
+                              dependency's own classpath is not resolved.
+    jar only              ->  read from the class files. Signatures and types are
+                              exact, but there are no line numbers and parameter
+                              names are arg0, arg1 unless the jar was built with
+                              -parameters. `src` decompiles a body on request -
+                              a reconstruction, labelled as one, cached.
+    git URL               ->  shallow-cloned once and cached, then parsed.
+
+  If neither jar is in your repository, jacli prints the exact mvn command to get
+  it - ask for the sources classifier when you can, it is strictly better:
+
+    mvn dependency:get -Dartifact=<g>:<a>:<v>:jar:sources
+
+  Targets are read on demand and never indexed, because nobody edits a dependency.
+  refs, callers and impls are for the project you are in; tree, api, def and src
+  are what -T is for. --private includes non-public members; --code prints each
+  declaration's source alongside its signature.
+
+  This replaces symbols.exe, whose whole surface now lives here. The old name still
+  works and points at jacli. What was `symbols gen -b <branch> -d -a -c -o` is
+  `jacli api <scope> --doc --private --code -o <file>`, and `symbols cache --clear`
+  is `jacli cache --clear`.
+
+
+WHAT IS IT - def, src
+
+    jacli def Out_I                  declaration, signature, javadoc, use counts
+    jacli def luvml.E#div            all four overloads, each with its own counts
+
+  `def` is small on purpose: a few hundred bytes for one named thing, where a
+  whole-package API dump runs to tens of kilobytes.
+
+    jacli src luvml.C#spaceSeparatedAttrVals        the body, no file opened
+    jacli src luvml.C#spaceSeparatedAttrVals --doc  with the comment above it
+    jacli src Out_A --numbered                      a whole type, with line numbers
+
+  Declarations carry their span in the index, so `src` is one file read and no
+  compilation. WALKING A STACK TRACE is what it is for - pass each frame exactly
+  as printed, dotted form and all:
+
+    jacli src luvml.o.HtmlRenderer.renderElement
+    jacli src luvml.o.Out_A.nL
+
+
+HOW IS IT USED - refs, callers, callees, impls, unused
+
+    jacli refs Out_I                     every use of the type
+    jacli refs Out_I#ba                  the member, every overload
+    jacli refs 'Out_I#ba(byte[])'        one overload only
+    jacli refs Out_I --kind EXTENDS,IMPLEMENTS    only where it is subtyped
+    jacli refs Cache#deleteTree --kind CALL       only real calls, no type uses
+    jacli refs Cache#deleteTree --overrides       include the override chain
+
+  A SYMBOL DECLARED IN A DEPENDENCY WORKS TOO. References are indexed by target,
+  not by declaration, so this answers from inside luvml even though Frag_I is
+  declared in another project:
+
+    jacli refs luvx.Frag_I               246 references
+    jacli refs java.util.stream.Collectors#joining
+
+  Before changing a signature, ask who calls it:
+
+    jacli callers Cache#deleteTree           direct callers
+    jacli callers Cache#deleteTree -d 3      three levels up
+    jacli callers Out_I#ba --overrides       counting calls through implementations
+    jacli callees HtmlRenderer#render -d 2   what it calls, downwards
+
+  And the type hierarchy, where inheritance beats text outright - an indirect
+  implementer never spells the interface in its own file:
+
+    jacli impls Out_I         every implementation, including through Out_A
+    jacli impls luvx.Frag_I   works across projects: the chain runs through
+                              luvx-base and javac knows it from the classpath
+
+    jacli unused              public API nothing in this project references
+
+
+SEVERAL PROJECTS AS ONE - scope
+
+  For a family of sibling maven projects with no root pom, where the type system
+  lives in one and the implementations in another, so the structural questions fall
+  exactly on the seam.
+
+    jacli scope --suggest              propose scopes from local-only dependencies
+    jacli scope luvml --add . --add ..\luvx-base --add ..\luvs
+    jacli scope                       every declared scope and its members
+
+  Verbs stay single-project by default, because that is the common case and a wider
+  scope costs a query per member. Widen when you mean to:
+
+    jacli impls luvx.Frag_I --scope luvml     60 subtypes, nested as declared
+    jacli unused --scope luvml                references from siblings now count
+    jacli refs X --with ..\luvx-base          one call, nothing declared
+
+  When a project belongs to a scope and you did not widen, the answer says so - a
+  capability nothing mentions is a capability nobody uses.
+
+  `unused --scope` widens where references are looked for, not what is audited: the
+  candidates stay this project's public API, checked against the whole scope's usage.
+  `--all` audits every project in the scope instead.
+
+
+DEPENDENCIES - deps, releasable
+
+  Poms only, no compilation, no network.
+
+    jacli deps                      the closure, 3 levels, each artifact's origin
+    jacli deps -d 1                 direct dependencies only
+    jacli deps --dependents io.github.luvml:luvx-base
+                                    which indexed projects depend on that artifact
+    jacli releasable                could anyone else build this project?
+
+  Origins come from the local repository's own resolver markers:
+
+    central       downloaded from maven central - anyone can build against it
+    remote:<id>   from some other remote repository
+    LOCAL-ONLY    somebody ran mvn install here; nobody else has it
+    MISSING       not in the local repository at all
+
+  `releasable` exists for one question: why does this project build here and
+  nowhere else. It names each blocker and what to do about it, and exits 1 when
+  there are any.
+
+    # BLOCKED: 3 dependencies would not resolve for anyone else.
+    LOCAL-ONLY - installed on this machine, published nowhere
+      io.github.xyz-jphil:xyz-jphil-arcadedb-datahelper:1.3
+      -> publish it to central, or fold its sources in, or shade it in
+
+  The walk is breadth-first, so the version reported is the one maven's
+  nearest-wins mediation would choose. Optional, test and provided dependencies
+  are excluded, and a pom-type dependency is checked for its pom rather than a jar
+  it will never have. What is NOT expanded: profiles, dependencyManagement and
+  version ranges - so treat a clean verdict as good evidence, not a guarantee.
+
+
+HOW TO NAME A SYMBOL
+
+  An IDE is handed a cursor. You are handed a name, so the forms are forgiving:
+
+    Out_I                        simple type name
+    luvml.o.Out_I                qualified type
+    Out_I#ba                     a member, every overload
+    'Out_I#ba(byte[])'           one overload (quote it: parentheses are shell
+                                 metacharacters in most shells)
+    luvml.o.HtmlRenderer.renderElement
+                                 the dotted form a stack trace prints
+    ba                           bare member name, any owner
+
+  The dotted form is ambiguous in principle, so jacli treats a final segment
+  starting with an upper-case letter as a type. Writing # removes the guess.
+
+  When an ambiguous spec is given to a USAGE verb - refs, callers, callees, impls -
+  jacli lists the candidates with their exact specs and exits 3 rather than choosing
+  one for you. Paste one back, or pass --all to report them together.
+
+  The DECLARATION verbs do not do that: `def text` and `src text` show E.text,
+  T.text and LineBreak.text together and exit 0, because listing every declaration
+  of a name is the useful answer there rather than an ambiguity to resolve. `def`
+  is therefore also the quick way to SEE an ambiguity, with each one's use count.
+
+  --overrides widens the search deliberately, and that is not ambiguity: the count
+  in the header says how many overrides were folded in.
+
+
+READING THE OUTPUT
+
+  Lines beginning with # are metadata and can be skipped. Everything else is a
+  hit, with an absolute path so you can Read straight to it:
+
+    # luvml.o.Out_I  -  sealed interface luvml.o.Out_I
+    # declared: C:\...\luvml\o\Out_I.java:12
+    # 40 references in 5 files  -  RESOLVED  66 files, 1361 declarations, ...
+
+    C:\...\luvml\o\HtmlRenderer.java
+        58:47 TYPE        render            static void render(Frag_I f, Out_I o) {
+
+  Each hit is line:col, the kind of use, the method or type it sits inside, and
+  the source line - often the whole answer, and cheaper than a follow-up read.
+
+  Reference kinds, all usable with --kind:
+    CALL NEW METHOD_REF TYPE FIELD EXTENDS IMPLEMENTS PERMITS THROWS ANNOTATION
+    IMPORT
+
+
+HOW MUCH TO TRUST AN ANSWER - READ THE TIER
+
+  Every answer names the tier it was obtained at, so a degraded index can never
+  present as a clean one and turn "not resolved" into "no usages".
+
+    RESOLVED   javac attributed everything, no errors. Overloads and inheritance
+               are exact. Trust it.
+    PARTIAL    attributed with errors. Exact where it resolved; unresolved
+               spellings are listed separately and marked ~. Usually an
+               incomplete classpath.
+    SYNTACTIC  parse only, nothing resolved. Same-named members of unrelated
+               types are not distinguished. A structure-aware search.
+    TEXTUAL    would not parse. Positions only.
+
+  Exit 5 means nothing found AND the index is degraded, which is different from
+  exit 1, nothing found on a clean index. Never read a 5 as proof of absence.
+
+  jacli still answers when a project does not compile - mid-refactor is exactly
+  when you search hardest - and tells you what the answer is worth.
+
+
+THE FIRST CALL IS THE SLOW ONE
+
+  The first verb run in a project indexes it, and that is the only slow call: it
+  compiles the whole tree once. Roughly a second for 66 files, and 10-40 seconds
+  for 488 files with a large dependency classpath. It does not stream progress, so
+  it looks like a hang and is not one.
+
+  Every call after that is answered from the index, typically 200-350ms, and after
+  you edit a file only that file is re-analysed. To pay the cost when you choose
+  to rather than mid-question:
+
+    jacli index            index now, report what was found
+    jacli index --watch    and keep it fresh in the background while you edit
+    jacli projects         what is indexed already, and how fresh
+
+  -T targets are never indexed, so they cost their read every time - a few hundred
+  milliseconds for a jar, more for a large sources jar.
+
+
+MAKING ANSWERS BETTER
+
+  Resolution needs the compile classpath. jacli finds one in named steps and says
+  which it used: cached, offline maven, online maven, then a direct walk of the
+  local m2 repository.
+
+    - run `mvn compile` in the project. jacli puts its target/classes first on the
+      classpath, which makes reindexing one changed file cheap and resolution more
+      complete.
+    - run `jacli status` when an answer looks off. It names the tier and the
+      classpath source, which is what decides correctness.
+    - `jacli index --watch` on a project you are actively editing, so reindexing
+      happens in the background rather than on your next query.
+
+
+COMMON OPTIONS
+
+  -p, --project <dir>   any path inside the project; defaults to the working
+                        directory. A multi-module reactor is indexed as one thing,
+                        so cross-module queries work with no setup.
+  -T, --target <spec>   read a library instead: groupId:artifactId:version from
+                        ~/.m2, a git URL, or a directory. Not indexed.
+      --private         include package-private and private members
+      --code            also print each declaration's source (symbols gen -c)
+  -o, --out <file>      write the result there and print only the path, for an API
+                        surface too large to want inline
+  -l, --limit <n>       maximum hits printed
+  -d, --depth <n>       depth for callers/callees
+      --kind <k,k>      keep only these reference kinds
+      --overrides       follow the override/implementation chain, as an IDE's
+                        "including overrides" does. Off by default: asking who
+                        calls a method shouldn't silently widen, but planning a
+                        signature change should.
+      --name <substr>   (api) search declaration names
+      --doc             include javadoc
+      --all             report every match instead of listing candidates
+  -t, --tests           include src/test/java
+      --reindex         rebuild this project's index from scratch
+      --syntactic       parse only; needs no classpath, resolves nothing
+      --direct          bypass the daemon, analyse in this process
+  -v, --verbose         diagnostics on stderr
+
+
+EXIT CODES
+
+  0  found
+  1  nothing found, on a clean index. Includes "no references of the kind you
+     filtered for" - the message says whether other kinds exist
+  2  bad usage
+  3  ambiguous symbol on a usage verb - candidates were listed, pick one or use
+     --all. def and src never do this; they list everything and exit 0
+  4  project not indexed, no java sources found, or a usage verb on a -T target
+     that has no reference index
+  5  nothing found, but the index is degraded - absence is NOT established
+
+
+ALONGSIDE OTHER TOOLS
+
+  A plain text search is the right tool for text: strings, comments, TODOs, log
+  messages, poms, fxml, resources, markdown, generated CSS, config - anything that
+  is not java - and for one identifier in one file you are about to read anyway.
+
+  Names bound at runtime rather than compiled - reflection, dependency injection,
+  service loaders, a class named in a config file - are invisible to a compiler and
+  so to jacli. Search text for those.
+
+  Everything else, ask jacli.
