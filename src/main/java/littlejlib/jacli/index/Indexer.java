@@ -4,6 +4,9 @@ import module java.base;
 import com.arcadedb.database.Database;
 import littlejlib.jacli.core.*;
 import littlejlib.jacli.proj.*;
+import xyz.jphil.arcadedb.datahelper.Delete;
+import xyz.jphil.arcadedb.datahelper.Indexes;
+import static xyz.jphil.arcadedb.datahelper.Query.query;
 
 /**
  * Writes an analysis into the index. Two modes: a whole project, and a set of changed files.
@@ -18,13 +21,27 @@ public final class Indexer {
 
     public static final int BATCH = 2000;
 
+    /**
+     * A whole project, replaced with the indexes taken down and rebuilt once at the end.
+     * <p>
+     * Both halves are paying the same toll otherwise: an LSM update per row per index, five times over,
+     * on the way out and again on the way in. Measured on 50,000 rows of one five-index type, the delete
+     * alone was 98 s indexed and 2.1 s inside the window. Rebuilding afterwards costs about a tenth of a
+     * second and is also what guarantees the index agrees with the records.
+     * <p>
+     * Only the FULL path does this. An incremental write touches a handful of rows, where a rebuild —
+     * which is O(every row of every type) — would cost far more than it saves.
+     */
     public static void indexAll(Database db, JavaProject p, Analysis a, long indexMs, Map<String, FileStamp> stamps) {
         var pid = p.id();
-        deleteProjectRows(db, pid);
-        writeDecls(db, pid, a.decls());
-        writeSupers(db, pid, a.supers());
-        writeRefs(db, pid, a.refs());
-        writeStamps(db, pid, stamps.values());
+        Indexes.duringBulkChange(db, Db.TYPES, () -> {
+            deleteProjectRows(db, pid);
+            writeDecls(db, pid, a.decls());
+            writeSupers(db, pid, a.supers());
+            writeRefs(db, pid, a.refs());
+            insertStamps(db, pid, stamps.values());
+        });
+        /* Outside the window: one row, and an upsert wants its unique index to find it by. */
         writeProject(db, pid, p, a, indexMs, stamps.size());
     }
 
@@ -32,13 +49,11 @@ public final class Indexer {
     public static void indexFiles(Database db, JavaProject p, Analysis a, Collection<String> rels,
                                   Collection<String> removed, Map<String, FileStamp> stamps) {
         var pid = p.id();
-        db.transaction(() -> {
-            for (var rel : rels) deleteFileRows(db, pid, rel);
-            for (var rel : removed) {
-                deleteFileRows(db, pid, rel);
-                db.command("sql", "DELETE FROM JFile WHERE projectId = ? AND rel = ?", pid, rel);
-            }
-        });
+        for (var rel : rels) deleteFileRows(db, pid, rel);
+        for (var rel : removed) {
+            deleteFileRows(db, pid, rel);
+            Delete.matching(query(db, JFile.TYPEDEF).eq(JFile.$projectId, pid).eq(JFile.$rel, rel));
+        }
         writeDecls(db, pid, a.decls());
         writeSupers(db, pid, a.supers());
         writeRefs(db, pid, a.refs());
@@ -46,18 +61,35 @@ public final class Indexer {
         touchProject(db, pid, stamps.size());
     }
 
+    /**
+     * This one runs on EVERY file edit, so it is the path that would poison an index slowly rather than
+     * all at once — which is the more dangerous of the two, since nothing would connect the eventual
+     * broken query to any particular edit.
+     */
     static void deleteFileRows(Database db, String pid, String rel) {
-        db.command("sql", "DELETE FROM JRef WHERE projectId = ? AND file = ?", pid, rel);
-        db.command("sql", "DELETE FROM JSuper WHERE projectId = ? AND childKey IN "
-                + "(SELECT key FROM JDecl WHERE projectId = ? AND file = ?)", pid, pid, rel);
-        db.command("sql", "DELETE FROM JDecl WHERE projectId = ? AND file = ?", pid, rel);
+        Delete.matching(query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$file, rel));
+        for (var key : declKeysIn(db, pid, rel))
+            Delete.matching(query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid).eq(JSuper.$childKey, key));
+        Delete.matching(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$file, rel));
     }
 
+    /** The keys a file declares, read before its declarations go, so their super edges can go too. */
+    static List<String> declKeysIn(Database db, String pid, String rel) {
+        return Safe.list(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$file, rel))
+                .stream().map(JDecl::key).filter(Objects::nonNull).distinct().toList();
+    }
+
+    /**
+     * Why {@link Delete} rather than {@code DELETE FROM JRef WHERE projectId = ?}: the SQL form left
+     * the index pointing at records that were gone, and every verb on the affected project then died
+     * with {@code RecordNotFoundException} instead of answering. The reasoning, the measurements and
+     * the repair all live in the library, next to the code that fixes them.
+     */
     public static void deleteProjectRows(Database db, String pid) {
-        db.transaction(() -> {
-            for (var type : List.of("JRef", "JDecl", "JSuper", "JFile"))
-                db.command("sql", "DELETE FROM " + type + " WHERE projectId = ?", pid);
-        });
+        Delete.matching(query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid));
+        Delete.matching(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid));
+        Delete.matching(query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid));
+        Delete.matching(query(db, JFile.TYPEDEF).eq(JFile.$projectId, pid));
     }
 
     /**
@@ -87,6 +119,16 @@ public final class Indexer {
                 .targetName(SymbolKey.simpleNameOf(Keys.spelling(o.targetKey())))
                 .enclosingKey(o.enclosingKey()).file(o.file()).line(o.line()).col(o.col())
                 .kind(o.kind().name()).in(db).insert());
+    }
+
+    /**
+     * Plain inserts, for the full path only. An upsert would have to look each row up, and inside a
+     * bulk-change window that lookup is a full scan — thousands of them. Safe here because the project's
+     * file rows were just deleted.
+     */
+    static void insertStamps(Database db, String pid, Collection<FileStamp> stamps) {
+        batched(db, List.copyOf(stamps), s -> new JFile().fileId(JFile.id(pid, s.rel())).projectId(pid)
+                .rel(s.rel()).size(s.size()).mtime(s.mtime()).in(db).insert());
     }
 
     static void writeStamps(Database db, String pid, Collection<FileStamp> stamps) {

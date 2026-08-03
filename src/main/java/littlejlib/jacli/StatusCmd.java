@@ -22,6 +22,11 @@ public final class StatusCmd implements Callable<Integer> {
         var out = new StringBuilder();
         out.append("# project: ").append(project.coords()).append('\n');
         out.append("# root: ").append(project.root()).append('\n');
+        out.append("# build: ").append(project.build().label()).append('\n');
+        if (Builds.contested(project.root()))
+            out.append("# ! this directory carries both a pom and a gradle build; ")
+                    .append(project.build().label()).append(" was used. Pass --build ")
+                    .append(project.build() == BuildKind.MAVEN ? "gradle" : "maven").append(" for the other\n");
         out.append("# java files: ").append(project.fileCount()).append('\n');
         project.sourceRoots().forEach(r -> out.append("# source root: ").append(r).append('\n'));
         project.moduleRoots().forEach(r -> out.append("# module: ").append(r).append('\n'));

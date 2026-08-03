@@ -1,6 +1,6 @@
 ================================================================================
 jacli (jack-lee) - java assist cli
-Compiler-accurate code navigation over java/maven projects, for coding agents.
+Compiler-accurate code navigation over java projects - maven or gradle - for agents.
 ================================================================================
 
 THE SHAPE OF IT
@@ -10,8 +10,9 @@ THE SHAPE OF IT
   it picks the right overload, and it follows inheritance across project
   boundaries.
 
-  Three question shapes, three groups of verbs:
+  Four question shapes, four groups of verbs:
 
+    WHERE ARE THEY?   discover                 you don't know what projects exist yet
     WHAT EXISTS?      tree  api                you don't know the name yet
     WHAT IS IT?       def  src                 you have a name, you want the thing
     HOW IS IT USED?   refs  callers  callees  impls  unused
@@ -24,6 +25,28 @@ THE SHAPE OF IT
     jacli src luvs.P#flex_direction        the body, sliced from the file
     jacli refs luvs.values.FlexDirection   every use, resolved
     jacli callers luvs.P#flex_direction    who calls it, before you change it
+
+
+WHERE ARE THE PROJECTS - discover
+
+  Before any of the above, when you are handed a directory rather than a project.
+  `discover` walks for build files and reports the project roots it finds, reading
+  nothing and indexing nothing:
+
+    jacli discover                    roots under the working directory
+    jacli discover C:/user/code       under somewhere else
+    jacli discover -d 2               how deep to look (default 4)
+    jacli discover --as-scope luvml   print the scope command that declares them
+
+  Each hit says its build system, its coordinates, whether it is already indexed,
+  and whether it is a reactor whose modules come with it. A directory holding
+  several sibling projects is the case this exists for: pointing a verb straight at
+  one is REFUSED rather than indexed, because every java file beneath it would
+  become a single nameless project. See the note under -p in COMMON OPTIONS.
+
+  This is the one question the index cannot answer. `scope --suggest` proposes only
+  siblings it has ALREADY indexed and that already have a dependency edge between
+  them; `discover` finds the ones nothing has touched.
 
 
 WHAT EXISTS - tree, api
@@ -43,11 +66,31 @@ WHAT EXISTS - tree, api
     jacli api --name flex                anything named *flex* anywhere
     jacli api luvml.element              the types in that package
     jacli api luvml.E --doc              with javadoc first sentences
+    jacli api Out_I --inherited          everything callable on it, supertypes folded in
+
+  --inherited IS THE ONE TO REACH FOR IN INTERFACE-HEAVY CODE, where a type's whole
+  usable API is inherited and plain `api` on the leaf shows almost nothing. Each
+  member is labelled with the type it came from, nearest first, and an override
+  hides the member it overrides rather than listing both:
+
+    luvml.o.Out_I   (declared here)
+      ...
+    luvx.Frag_I     (inherited)
+      ...
+
+  Plain `api` on a type that declares nothing of its own does not leave you stuck
+  either: it says the type exists, that its API is inherited, and names the
+  supertypes to ask about.
 
   `api --name` searches declaration NAMES. It matches declarations and never
   comments, strings or unrelated text, so it surfaces what a text search for the
   same word buries. It is usually the fastest route from a vague idea to an exact
   symbol.
+
+  `api --doc` prints only the javadoc's FIRST SENTENCE. A design remark buried
+  deeper in the comment, or in a plain // note, will not show up there - use
+  `jacli src <symbol> --doc` for the whole comment, or a text search for a phrase
+  you expect anywhere in prose.
 
   Overloads appear as separate lines, so questions like "why can't I mix these
   argument types" answer themselves:
@@ -67,8 +110,9 @@ A LIBRARY YOU HAVE NOT OPENED - the -T target
     jacli api  -T info.picocli:picocli:4.7.7 --name Option
     jacli tree -T https://github.com/someone/somelib
 
-  A target is maven coordinates from your local ~/.m2, a git or GitHub URL, or a
-  directory. jacli takes the best available route and always says which one:
+  A target is maven coordinates - looked for in ~/.m2 first and the gradle cache
+  second, so it does not matter which build tool put them there - a git or GitHub
+  URL, or a directory. jacli takes the best available route and always says which:
 
     sources jar present   ->  extracted and parsed. Real parameter names, real
                               line numbers, javadoc. SYNTACTIC, since a
@@ -149,14 +193,64 @@ HOW IS IT USED - refs, callers, callees, impls, unused
     jacli unused              public API nothing in this project references
 
 
+MAVEN OR GRADLE - both, and you should not have to care
+
+  Everything above works the same either way. A directory is a project because it
+  carries pom.xml, settings.gradle(.kts) or build.gradle(.kts), and `jacli status`
+  names which one was used.
+
+  Modules come from the build's own declaration, never from a directory walk:
+  <modules> for maven, include(...) in the settings file for gradle. That matters
+  more on gradle than it sounds. teavm still holds html4j, samples/gamepad and
+  tools/eclipse as complete source trees that its settings file no longer includes,
+  and archetype templates under tools/maven/webapp/src/main/resources that look
+  exactly like a source root and a pom to anything that globs. None of them belong
+  in the index and none of them are in it.
+
+  A gradle build's model - subprojects, source roots, compile classpath, resolved
+  dependencies - is obtained the same way the maven classpath is, in named steps,
+  and the step used is reported:
+
+    cache            fingerprinted against every build file, catalog and
+                     gradle.properties in the build
+    gradle-offline   the project's own gradlew, --offline, with a read-only init
+                     script that adds one task and executes it
+    gradle-online    the same, allowed to resolve
+    gradle-static    the build files read directly: settings for the subprojects,
+                     the version catalog for coordinates, ~/.gradle/caches and
+                     ~/.m2 for the jars. Conventional and approximate, and the
+                     note in the output says so.
+
+  Two things are worth knowing before jacli launches anything:
+
+    - The init script runs no task of YOUR build. But configuring a composite
+      build compiles its build logic, so on a project like teavm, whose settings
+      does includeBuild("build-logic"), gradle does build something. Set
+      JACLI_GRADLE_RUN=false (or -Djacli.gradle.run=false) and jacli never starts
+      gradle at all - it reads the files instead and reports gradle-static.
+    - A run that fails is discarded even if it wrote a model. A build that dies
+      part way through configuring describes only the projects it reached, and
+      that parses perfectly: the first version of this served an answer for
+      teavm's 3,445 files built from the 12 it had managed to see.
+
+  When a directory carries BOTH a pom and a gradle build, maven wins, so nothing
+  already indexed changes its answer. `--build gradle` says otherwise, and status
+  points it out whenever the choice was contested.
+
+  Included builds (includeBuild, buildSrc) are part of the same index. Their
+  sources are read from disk rather than from gradle, since one task invocation
+  does not describe another build, so types they take from their own dependencies
+  may not resolve - the note names them.
+
+
 SEVERAL PROJECTS AS ONE - scope
 
-  For a family of sibling maven projects with no root pom, where the type system
+  For a family of sibling projects with no root build, where the type system
   lives in one and the implementations in another, so the structural questions fall
   exactly on the seam.
 
     jacli scope --suggest              propose scopes from local-only dependencies
-    jacli scope luvml --add . --add ..\luvx-base --add ..\luvs
+    jacli scope luvml --add . --add ../luvx-base --add ../luvs
     jacli scope                       every declared scope and its members
 
   Verbs stay single-project by default, because that is the common case and a wider
@@ -164,7 +258,7 @@ SEVERAL PROJECTS AS ONE - scope
 
     jacli impls luvx.Frag_I --scope luvml     60 subtypes, nested as declared
     jacli unused --scope luvml                references from siblings now count
-    jacli refs X --with ..\luvx-base          one call, nothing declared
+    jacli refs X --with ../luvx-base          one call, nothing declared
 
   When a project belongs to a scope and you did not widen, the answer says so - a
   capability nothing mentions is a capability nobody uses.
@@ -173,10 +267,34 @@ SEVERAL PROJECTS AS ONE - scope
   candidates stay this project's public API, checked against the whole scope's usage.
   `--all` audits every project in the scope instead.
 
+  `--suggest` proposes from a LOCAL-ONLY DEPENDENCY between two projects ALREADY
+  INDEXED. On a family whose members do not depend on each other, or that nothing
+  has indexed yet, it proposes nothing however many siblings sit side by side on
+  disk - that is what `discover --as-scope <name>` is for, and it hands back the
+  exact command. `scope --add` still needs each project indexed first, and says so.
+
+  A scope's reported tier is the WORST of its members: one PARTIAL project pulls
+  the whole scoped answer down to PARTIAL even if the project you actually care
+  about is RESOLVED on its own. If a scoped answer looks more degraded than
+  expected, drop --scope and run `jacli status -p <dir>` on the one project to see
+  its own tier in isolation.
+
+  A scope of any size stays warm. Recent use counts as use, so a query walking its
+  members one after another cannot evict the ones it has just visited, and the
+  soft cap of 4 warm projects yields to the scope actually in flight. Evictions are
+  routine housekeeping that never change an answer, so they are reported only under
+  -v.
+
+  Windows note: pass forward-slash paths to -p/--add/-T even here (C:/user/code/
+  proj, not C:\user\code\proj). Several agent shells on Windows are still
+  POSIX-style (git-bash), where backslash is an escape character. A path that does
+  not exist is reported as exactly that, with the absolute path it resolved to -
+  compare that against what you typed and a mangled path is obvious.
+
 
 DEPENDENCIES - deps, releasable
 
-  Poms only, no compilation, no network.
+  No compilation. On maven, poms only and no network.
 
     jacli deps                      the closure, 3 levels, each artifact's origin
     jacli deps -d 1                 direct dependencies only
@@ -188,8 +306,9 @@ DEPENDENCIES - deps, releasable
 
     central       downloaded from maven central - anyone can build against it
     remote:<id>   from some other remote repository
-    LOCAL-ONLY    somebody ran mvn install here; nobody else has it
-    MISSING       not in the local repository at all
+    LOCAL-ONLY    somebody installed it here; nobody else has it
+    cached        in the gradle cache (see below)
+    MISSING       in neither the gradle cache nor the maven repository
 
   `releasable` exists for one question: why does this project build here and
   nowhere else. It names each blocker and what to do about it, and exits 1 when
@@ -205,6 +324,20 @@ DEPENDENCIES - deps, releasable
   are excluded, and a pom-type dependency is checked for its pom rather than a jar
   it will never have. What is NOT expanded: profiles, dependencyManagement and
   version ranges - so treat a clean verdict as good evidence, not a guarantee.
+
+  ON GRADLE THE EVIDENCE IS DIFFERENT, and better in one way and worse in another.
+  Better: when gradle can be run, the graph is its own resolution result, so the
+  versions are the ones it would really use - no pom walk to approximate them.
+  Worse: gradle records nowhere cheap to read WHICH repository served an artifact,
+  so a downloaded jar reads `cached` and not `central`. The releasable verdict
+  therefore rests on the repositories the build declares, and prints them:
+
+    # BLOCKED: 1 dependencies would not resolve for anyone else.
+    # repositories declared: mavenCentral, mavenLocal
+    # mavenLocal() is declared - anything resolved from it exists only on machines
+    # where somebody installed it, which is exactly the maven LOCAL-ONLY problem
+
+  A private maven { url } is reported the same way, by name.
 
 
 HOW TO NAME A SYMBOL
@@ -273,6 +406,18 @@ HOW MUCH TO TRUST AN ANSWER - READ THE TIER
   Exit 5 means nothing found AND the index is degraded, which is different from
   exit 1, nothing found on a clean index. Never read a 5 as proof of absence.
 
+  One warning is worth recognising on sight:
+
+    jacli: N index rows could not be read - ... Repair with: jacli cache --repair
+
+  That is the index holding entries for records that are gone. Answers still come
+  back and are still exact as far as they go, but they are SHORT - reference counts
+  especially, which can read as 0 for a symbol used thousands of times. `--reindex`
+  does not clear it, and that is not a bug in the advice: an entry with no record
+  behind it cannot be found by a delete, so rewriting the rows leaves it exactly
+  where it was. `cache --repair` rebuilds the index structures from the records and
+  reindexes nothing.
+
   jacli still answers when a project does not compile - mid-refactor is exactly
   when you search hardest - and tells you what the answer is worth.
 
@@ -283,6 +428,11 @@ THE FIRST CALL IS THE SLOW ONE
   compiles the whole tree once. Roughly a second for 66 files, and 10-40 seconds
   for 488 files with a large dependency classpath. It does not stream progress, so
   it looks like a hang and is not one.
+
+  On gradle the first call is slower still, because the build has to be configured
+  before anything can be compiled - and if its dependency cache is cold, that is a
+  download. Once the model is cached it is not paid again until a build file
+  changes.
 
   Every call after that is answered from the index, typically 200-350ms, and after
   you edit a file only that file is re-analysed. To pay the cost when you choose
@@ -299,12 +449,13 @@ THE FIRST CALL IS THE SLOW ONE
 MAKING ANSWERS BETTER
 
   Resolution needs the compile classpath. jacli finds one in named steps and says
-  which it used: cached, offline maven, online maven, then a direct walk of the
-  local m2 repository.
+  which it used: cached, then the build tool offline, then the build tool online,
+  then a direct read of what is on disk - poms in ~/.m2 for maven, the build files
+  and ~/.gradle/caches for gradle.
 
-    - run `mvn compile` in the project. jacli puts its target/classes first on the
-      classpath, which makes reindexing one changed file cheap and resolution more
-      complete.
+    - build the project once. jacli puts its target/classes (or build/classes/
+      java/main) first on the classpath, which makes reindexing one changed file
+      cheap and resolution more complete.
     - run `jacli status` when an answer looks off. It names the tier and the
       classpath source, which is what decides correctness.
     - `jacli index --watch` on a project you are actively editing, so reindexing
@@ -316,8 +467,21 @@ COMMON OPTIONS
   -p, --project <dir>   any path inside the project; defaults to the working
                         directory. A multi-module reactor is indexed as one thing,
                         so cross-module queries work with no setup.
+
+                        A directory that names no project of its own but CONTAINS
+                        projects is REFUSED, with the roots listed and the scope
+                        command to declare them: indexing it would make every java
+                        file beneath it one nameless project. A bare source tree
+                        with no build file anywhere is still fine - that is a real,
+                        if unnamed, project and is indexed as one. Any such entry
+                        already in your index is flagged by `jacli projects`, and
+                        `jacli cache --forget <dir>` drops just that one.
   -T, --target <spec>   read a library instead: groupId:artifactId:version from
-                        ~/.m2, a git URL, or a directory. Not indexed.
+                        ~/.m2 or the gradle cache, a git URL, or a directory.
+                        Not indexed.
+      --build <which>   maven or gradle, for a directory that carries both.
+                        Default maven. JACLI_GRADLE_RUN=false stops jacli
+                        launching gradle at all.
       --private         include package-private and private members
       --code            also print each declaration's source (symbols gen -c)
   -o, --out <file>      write the result there and print only the path, for an API
@@ -361,5 +525,10 @@ ALONGSIDE OTHER TOOLS
   Names bound at runtime rather than compiled - reflection, dependency injection,
   service loaders, a class named in a config file - are invisible to a compiler and
   so to jacli. Search text for those.
+
+  WHICH PROJECTS EXIST, AND WHERE, is a filesystem question, and `jacli discover`
+  is the verb for it - the index cannot answer it, since it only knows what has
+  already been indexed. Reach for discover, not a file search, when you are handed
+  an unfamiliar directory.
 
   Everything else, ask jacli.

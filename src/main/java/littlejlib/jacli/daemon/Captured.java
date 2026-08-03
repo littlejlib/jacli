@@ -2,7 +2,6 @@ package littlejlib.jacli.daemon;
 
 import module java.base;
 import littlejlib.jacli.JacliCli;
-import picocli.CommandLine;
 
 /**
  * Runs a real CLI invocation inside the daemon with its streams captured. The daemon therefore
@@ -16,6 +15,14 @@ public final class Captured {
 
     private Captured() { }
 
+    /**
+     * Whether the request being served asked for diagnostics. Process-global for the same reason the
+     * streams above are: {@link Server} holds a lock for the whole request. It exists so the daemon's
+     * own housekeeping chatter — cache evictions, which are routine and never change an answer — stays
+     * out of an ordinary reply and remains available under {@code -v}.
+     */
+    public static volatile boolean verbose;
+
     public static Response run(String cwd, List<String> args) {
         var out = new ByteArrayOutputStream();
         var err = new ByteArrayOutputStream();
@@ -26,9 +33,9 @@ public final class Captured {
             System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
             System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
             littlejlib.jacli.proj.Cwd.set(Path.of(cwd));
-            var exit = new CommandLine(new JacliCli())
-                    .setCaseInsensitiveEnumValuesAllowed(true)
-                    .execute(args.toArray(String[]::new));
+            verbose = args.contains("-v") || args.contains("--verbose");
+            littlejlib.jacli.proj.Builds.prefer(null);
+            var exit = JacliCli.commandLine().execute(args.toArray(String[]::new));
             return new Response(exit, Build.STAMP, out.toString(StandardCharsets.UTF_8),
                     err.toString(StandardCharsets.UTF_8));
         } catch (RuntimeException e) {
@@ -38,6 +45,8 @@ public final class Captured {
             littlejlib.jacli.proj.Cwd.set(realCwd);
             System.setOut(realOut);
             System.setErr(realErr);
+            verbose = false;
+            littlejlib.jacli.proj.Builds.prefer(null);
         }
     }
 }

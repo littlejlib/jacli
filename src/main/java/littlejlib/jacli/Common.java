@@ -14,11 +14,15 @@ public final class Common {
 
     @Option(names = { "-T", "--target" }, paramLabel = "<target>",
             description = { "A library you have not opened, instead of a local project. One of:",
-                "  groupId:artifactId:version  from your local ~/.m2 (sources jar if present, else the jar's class files)",
+                "  groupId:artifactId:version  from ~/.m2 or the gradle cache (sources jar if present, else the jar's class files)",
                 "  a git or GitHub URL         shallow-cloned and cached",
-                "  a directory                 same as --project",
+                "  a directory                 same as --project; maven or gradle, detected",
                 "Not indexed - read on demand, since nobody edits a dependency. Best with tree and api." })
     String target;
+
+    @Option(names = "--build", paramLabel = "<maven|gradle>",
+            description = "Which build file to believe when a directory carries both. Default maven.")
+    public void build(littlejlib.jacli.proj.BuildKind kind) { littlejlib.jacli.proj.Builds.prefer(kind); }
 
     @Option(names = "--private", description = "Include package-private and private members.")
     boolean includeNonPublic;

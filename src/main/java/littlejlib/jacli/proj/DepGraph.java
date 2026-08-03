@@ -21,7 +21,14 @@ public final class DepGraph {
 
     public static final int DEFAULT_DEPTH = 3, MAX_DEPTH = 12;
 
+    /**
+     * Gradle answers from its model rather than from poms, and never launches gradle here: this is
+     * called once per project by {@code scope --suggest}, so a build tool run per project would turn
+     * one suggestion into minutes. {@code deps} and {@code releasable} ask for the real thing.
+     */
     public static List<DepNode> of(Path root, List<Path> moduleRoots, int depth, Consumer<String> log) {
+        if (Builds.kindOf(root) == BuildKind.GRADLE)
+            return littlejlib.jacli.proj.gradle.GradleDeps.of(root, depth, false, log);
         var maxDepth = Math.min(depth, MAX_DEPTH);
         var winners = new LinkedHashMap<String, DepNode>();
         var frontier = new ArrayList<Coords>();
@@ -70,6 +77,10 @@ public final class DepGraph {
         var out = new ArrayList<String>();
         for (var root : projectRoots) {
             if (!Files.isDirectory(root)) continue;
+            if (Builds.kindOf(root) == BuildKind.GRADLE) {
+                if (littlejlib.jacli.proj.gradle.GradleDeps.declares(root, groupArtifact)) out.add(root.toString());
+                continue;
+            }
             for (var pom : Classpath.poms(root, Projects.moduleRoots(root)))
                 if (Poms.directDependencies(pom).stream().anyMatch(g -> g.startsWith(groupArtifact + ":"))) {
                     out.add(root.toString());

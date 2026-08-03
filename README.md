@@ -2,6 +2,8 @@
 
 `jacli` (jack-lee) answers the questions grep has no form for, using the real javac compiler rather than string matching: who calls this, what implements this, where is this used, what does this method's body look like. It is a PATH binary, not a language server — invoked deliberately, needing no per-project install, and surviving anything that would kill an LSP session.
 
+Maven and gradle are both first class. Which one a directory uses is detected, reported, and otherwise not your problem.
+
 Built for coding agents. Default `jacli` with no arguments prints a full tutorial, because a CLI has no prompt attached the way an MCP server does — that help text is the only documentation an agent ever reads.
 
 ## Verbs
@@ -28,7 +30,9 @@ WHAT DOES IT NEED?  jacli deps    [-d N]      the closure, with each artifact's 
                   jacli index [--watch] | projects | status | daemon
 ```
 
-`releasable` answers one question: why does this project build here and nowhere else. Origins are read offline from the local repository's resolver markers — `central`, `remote:<id>`, `LOCAL-ONLY` (somebody ran `mvn install`), `MISSING` — and every blocker gets a mitigation. The walk is breadth-first so the version reported is the one maven's nearest-wins mediation would pick; optional, test and provided dependencies are excluded, and a pom-type dependency is checked for its pom rather than a jar it will never have. Profiles, `dependencyManagement` and version ranges are not expanded, so a clean verdict is good evidence rather than a guarantee.
+`releasable` answers one question: why does this project build here and nowhere else. On maven, origins are read offline from the local repository's resolver markers — `central`, `remote:<id>`, `LOCAL-ONLY` (somebody ran `mvn install`), `MISSING` — and every blocker gets a mitigation. The walk is breadth-first so the version reported is the one maven's nearest-wins mediation would pick; optional, test and provided dependencies are excluded, and a pom-type dependency is checked for its pom rather than a jar it will never have. Profiles, `dependencyManagement` and version ranges are not expanded, so a clean verdict is good evidence rather than a guarantee.
+
+On gradle the graph is better and the origins are worse, and both are stated. Better: when gradle can be run, the graph is its own resolution result, so the versions are the ones it would actually use rather than a pom walk's approximation. Worse: gradle records nowhere cheap to read *which* repository served an artifact, so a downloaded jar reads `cached`, and the verdict rests on the repositories the build declares — `mavenLocal()` and private `maven { url }` entries are named as the blockers they are.
 
 Any verb can be pointed at a library instead of the current project with `-T`:
 
@@ -57,6 +61,9 @@ Three parts, for one reason each.
 - **CLI** — thin. Forwards argv to the daemon and prints what comes back. Falls back to running in-process if there is no daemon.
 - **Daemon** — holds the ArcadeDB index open and a warm javac file manager per project. Not an optimisation: embedded ArcadeDB takes an exclusive lock on its directory and Claude Code issues parallel tool calls, so a per-invocation open would collide with itself. Requests are served one at a time under a lock, because neither ArcadeDB nor a `JavacTask` is thread safe and a query costs milliseconds.
 - **Index** — ArcadeDB documents: `JProject`, `JFile`, `JDecl`, `JRef`, `JSuper`. Every declaration and every reference occurrence is stored, because extracting all 13,067 references from a 488-file project costs 66 ms against the 11–30 seconds javac spends attributing the trees they came from. There is no reason to be stingy.
+- **Build model** — one shape, `GradleModel`, filled either by gradle itself through a read-only init script or by reading the build files, so everything downstream is indifferent to which answered and only the reported source says. The ladder is the maven one: cache, tool offline, tool online, static read. It escalates on how much *resolved*, not on the exit code — per-project failures are caught inside the init script so one unresolvable subproject does not cost the whole model, which means gradle can exit 0 having quietly produced a classpath full of holes.
+
+Modules always come from the build's own declaration — `<modules>`, or `include(...)` in the settings file — never from a directory walk. On teavm that is the difference between 2,991 files and 3,445: `html4j`, `samples/gamepad` and `tools/eclipse` are complete source trees the build no longer includes, and `tools/maven/webapp/src/main/resources/archetype-resources/` is a template containing a `pom.xml` and a `src/main/java` that any glob reads as a real project.
 
 The engine is the javac API (`JavacTask`, `Trees`, `Elements`, `Types`) — public exported API in `jdk.compiler`, so no external dependency, real compiler semantics, and it parses JDK 25 `import module` natively where JavaParser cannot parse it at all.
 
@@ -69,6 +76,8 @@ luvml   66 files    cold index 1.1-4s      warm query 0.8-1.0s
 luvjfx  488 files   cold index 11-39s      warm query 1.1-1.4s
                     incremental after editing one file: +0.8s
 ```
+
+On gradle the first call also has to configure the build, and if its dependency cache is cold that is a download. teavm, from nothing: 331 s to a complete model, most of it fetching ~4 GB, once. `JACLI_GRADLE_RUN=false` skips launching gradle entirely and reads the build files instead.
 
 Against the stateless alternative, which re-analyses per call: `luvjfx` worst case measured 5.0s **per query**. The index pays for itself on the third question, and an agentic loop asks hundreds.
 
@@ -83,13 +92,17 @@ Every answer names what it is worth, because a degraded index presented as a cle
 
 Exit code 5 means nothing found *and* the index is degraded, which is not the same as exit 1. jacli deliberately still answers when a project does not compile — mid-refactor is exactly when you search hardest — and says how much the answer is worth.
 
+The same rule covers a damaged index. If entries outlive the records they point at, the affected rows are skipped and counted rather than thrown, and the warning names `jacli cache --repair` — which rebuilds the index structures from the records and reindexes nothing. `--reindex` does *not* clear that, and the message says so: an entry with no record behind it cannot be found by a delete, so rewriting the rows leaves it where it was.
+
 ## Tests
 
 ```
 mvn test
 ```
 
-20 tests, under a second, offline. Most of them exist because a field tester found the defect first: `api` on interfaces, `--overrides` tripping the ambiguity guard, package scopes parsed as member specs, a `--kind` filter claiming a symbol was unused, optional and pom-type dependencies reported as release blockers. They run against a self-contained fixture project with no dependencies, so javac resolves it against the platform alone — they pin the engine's semantics rather than the state of this machine.
+77 tests, a few seconds, offline. Most exist because a field tester found the defect first: `api` on interfaces, `--overrides` tripping the ambiguity guard, package scopes parsed as member specs, a `--kind` filter claiming a symbol was unused, optional and pom-type dependencies reported as release blockers. They run against self-contained fixture projects with no dependencies, so javac resolves them against the platform alone, and no test is allowed to launch maven or gradle — they pin the engine's semantics rather than the state of this machine.
+
+The gradle fixture is built out of the ways a real build defeats a naive reader: a commented-out `include`, a subproject directory the settings file no longer lists, coordinates that exist only in `libs.versions.toml`, a test-only dependency, an `includeBuild`, and a settings file whose includes are computed rather than written.
 
 Every one of them has been checked to fail when its fix is reverted. A regression test that has never been seen to fail is a comment.
 

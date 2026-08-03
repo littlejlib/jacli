@@ -18,10 +18,13 @@ import picocli.CommandLine.Option;
             "  central       downloaded from maven central - anyone can build against it",
             "  remote:<id>   from some other remote repository",
             "  LOCAL-ONLY    somebody ran mvn install here; nobody else has it",
-            "  MISSING       not in the local repository at all",
+            "  cached        in the gradle cache, which does not record which repository served it",
+            "  MISSING       in neither the gradle cache nor the maven repository",
             "",
-            "Poms only, no compilation. Profiles, dependencyManagement and version ranges are not",
-            "expanded, and unresolvable versions are reported rather than guessed."
+            "On maven: poms only, no compilation. Profiles, dependencyManagement and version ranges are",
+            "not expanded, and unresolvable versions are reported rather than guessed.",
+            "On gradle: gradle's own resolution result when gradle can be run, so versions are the ones",
+            "it would really use; otherwise the closure of what the build files and version catalog declare."
         })
 public final class DepsCmd implements Callable<Integer> {
 
@@ -38,11 +41,18 @@ public final class DepsCmd implements Callable<Integer> {
             if (dependents != null) return listDependents();
             var root = Projects.findRoot(common.where());
             var modules = Projects.moduleRoots(root);
-            var roots = DepGraph.of(root, modules, common.depthOr(DepGraph.DEFAULT_DEPTH), common.log());
-            var all = roots;
-            var out = new StringBuilder("# deps of " + Poms.coords(root.resolve(Poms.POM)) + "\n");
-            out.append("# ").append(all.size()).append(" artifacts to depth ").append(common.depthOr(DepGraph.DEFAULT_DEPTH)).append('\n');
-            out.append(DepGraph.render(roots));
+            var depth = common.depthOr(DepGraph.DEFAULT_DEPTH);
+            var gradle = Builds.kindOf(root) == BuildKind.GRADLE;
+            var model = gradle
+                    ? littlejlib.jacli.proj.gradle.GradleDeps.model(root, true, common.log()) : null;
+            var all = model != null ? littlejlib.jacli.proj.gradle.GradleDeps.from(model, depth)
+                    : DepGraph.of(root, modules, depth, common.log());
+            var out = new StringBuilder("# deps of " + (model != null ? model.coords() : Projects.coords(root))
+                    + "  (" + Builds.kindOf(root).label() + ")\n");
+            out.append("# ").append(all.size()).append(" artifacts to depth ").append(depth).append('\n');
+            if (gradle) out.append("# gradle records no repository of origin, so a downloaded artifact reads "
+                    + "'cached'; jacli releasable reads the declared repositories instead\n");
+            out.append(DepGraph.render(all));
             common.emit(out.toString());
             return all.isEmpty() ? 1 : 0;
         } catch (RuntimeException e) {

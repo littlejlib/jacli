@@ -31,7 +31,7 @@ public final class Targets {
     public static Target local(Path anyPathInside) {
         var root = Projects.findRoot(anyPathInside);
         var modules = Projects.moduleRoots(root);
-        return new Target(Target.Kind.LOCAL, root.toString(), Poms.coords(root.resolve(Poms.POM)), root,
+        return new Target(Target.Kind.LOCAL, root.toString(), Projects.coords(root), root,
                 Projects.sourceRoots(root, modules, false), null, root.toString());
     }
 
@@ -43,10 +43,21 @@ public final class Targets {
         return s.startsWith("http://") || s.startsWith("https://") || s.startsWith("git@") || s.endsWith(".git");
     }
 
+    /**
+     * Coordinates are looked for in {@code ~/.m2} first and the gradle cache second, so the same
+     * {@code -T g:a:v} works whichever build tool put the artifact on this machine.
+     */
     static Target maven(Coords c, Consumer<String> log) {
         var jar = M2.jarPath(c);
         if (jar == null) throw new IllegalStateException("incomplete coordinates: " + c
                 + " - give groupId:artifactId:version");
+        if (!Files.isRegularFile(jar)) {
+            var cached = littlejlib.jacli.proj.gradle.GradleCache.jar(c);
+            if (cached != null) {
+                log.accept("not in ~/.m2; using the gradle cache copy at " + cached.getParent());
+                jar = cached;
+            }
+        }
         var sourcesJar = jar.getParent().resolve(jar.getFileName().toString().replace(".jar", "-sources.jar"));
         if (Files.isRegularFile(sourcesJar)) {
             var dir = Home.dir(SRC_CACHE, c.flat());
@@ -60,7 +71,10 @@ public final class Targets {
             return new Target(Target.Kind.MAVEN_CLASSES, c.toString(), c, jar.getParent(), List.of(), jar,
                     jar.toString());
         }
-        throw new IllegalStateException(c + " is not in your local repository. Fetch it with:\n"
+        var near = littlejlib.jacli.proj.gradle.GradleCache.versionsOf(c.groupId(), c.artifactId());
+        throw new IllegalStateException(c + " is in neither ~/.m2 nor the gradle cache."
+                + (near.isEmpty() ? "" : " The gradle cache does hold version(s) " + String.join(", ", near) + ".")
+                + " Fetch it with:\n"
                 + "  mvn dependency:get -Dartifact=" + c + ":jar:sources     (best - real sources)\n"
                 + "  mvn dependency:get -Dartifact=" + c + "                 (jar only - still gives signatures)");
     }
@@ -72,7 +86,7 @@ public final class Targets {
         var root = Projects.findRoot(dir);
         var modules = Projects.moduleRoots(root);
         var sourceRoots = Projects.sourceRoots(root, modules, false);
-        return new Target(Target.Kind.GIT, url, Poms.coords(root.resolve(Poms.POM)), root, sourceRoots, null, url);
+        return new Target(Target.Kind.GIT, url, Projects.coords(root), root, sourceRoots, null, url);
     }
 
     static void clone(String url, Path dir, Consumer<String> log) {

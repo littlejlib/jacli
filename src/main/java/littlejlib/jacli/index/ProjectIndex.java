@@ -96,8 +96,8 @@ public final class ProjectIndex {
             return store(project, row, true, "");
         }
         if (!project.classpath().hasCompiledOutput()) {
-            log.accept(changes + " but no target/classes, so a single-file pass could not resolve "
-                    + "project-internal types - reindexing the whole project");
+            log.accept(changes + " but no compiled output on the classpath, so a single-file pass could not "
+                    + "resolve project-internal types - reindexing the whole project");
             return full(project, now, log, changes.toString());
         }
         return incremental(project, now, changes, log);
@@ -158,13 +158,13 @@ public final class ProjectIndex {
     Set<String> filesReferencing(String pid, Collection<String> rels, Consumer<String> log) {
         var keys = new HashSet<String>();
         for (var rel : rels) {
-            for (var d : query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$file, rel))
+            for (var d : Safe.list(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$file, rel)))
                 keys.add(d.key());
             if (keys.size() > MAX_DEPENDENT_KEYS) return null;
         }
         var files = new LinkedHashSet<String>();
         for (var k : keys)
-            for (var r : query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$targetKey, k))
+            for (var r : Safe.list(query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$targetKey, k)))
                 if (r.file() != null && !rels.contains(r.file())) files.add(r.file());
         return files;
     }
@@ -176,7 +176,7 @@ public final class ProjectIndex {
 
     Map<String, FileStamp> storedStamps(String pid) {
         var out = new HashMap<String, FileStamp>();
-        for (var f : query(db, JFile.TYPEDEF).eq(JFile.$projectId, pid))
+        for (var f : Safe.list(query(db, JFile.TYPEDEF).eq(JFile.$projectId, pid)))
             out.put(f.rel(), new FileStamp(f.rel(), f.size() == null ? -1 : f.size(),
                     f.mtime() == null ? -1 : f.mtime()));
         return out;

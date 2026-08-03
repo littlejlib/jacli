@@ -14,6 +14,9 @@ import static xyz.jphil.arcadedb.datahelper.Query.query;
  * Supertype rows are attached only where a verb needs them, and subtype lookups fetch their
  * declarations in one batched query rather than one per child — a deep hierarchy otherwise turns a
  * single question into hundreds of round trips.
+ * <p>
+ * Every read goes through {@link Safe}, so an index entry whose record has gone costs that one row and
+ * a warning rather than the whole answer.
  */
 public final class DbStore implements Store {
 
@@ -35,26 +38,24 @@ public final class DbStore implements Store {
 
     @Override
     public List<Decl> declsByName(String simpleName) {
-        return query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$name, simpleName)
-                .stream().map(r -> Rows.toDecl(r, root)).toList();
+        return decls(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$name, simpleName));
     }
 
     @Override
     public Optional<Decl> declByKey(String key) {
-        var row = query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$key, key).firstOrNull();
-        return row == null ? Optional.empty() : Optional.of(Rows.toDecl(row, root));
+        return decls(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$key, key))
+                .stream().findFirst();
     }
 
     @Override
     public List<Occurrence> refsTo(String targetKey) {
-        return query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$targetKey, targetKey)
-                .stream().map(r -> Rows.toOccurrence(r, root)).toList();
+        return occurrences(query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$targetKey, targetKey));
     }
 
     @Override
     public List<Occurrence> refsFrom(String enclosingKey) {
-        return query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$enclosingKey, enclosingKey)
-                .stream().map(r -> Rows.toOccurrence(r, root)).toList();
+        return occurrences(query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid)
+                .eq(JRef.$enclosingKey, enclosingKey));
     }
 
     @Override
@@ -65,39 +66,38 @@ public final class DbStore implements Store {
 
     @Override
     public List<String> supersOf(String key) {
-        return query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid).eq(JSuper.$childKey, key)
+        return Safe.list(query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid).eq(JSuper.$childKey, key))
                 .stream().map(JSuper::superKey).distinct().toList();
     }
 
     List<Decl> subtypes(String key, boolean directOnly) {
-        var children = query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid).eq(JSuper.$superKey, key)
-                .stream().filter(s -> !directOnly || Boolean.TRUE.equals(s.direct()))
+        var children = Safe.list(query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid)
+                        .eq(JSuper.$superKey, key)).stream()
+                .filter(s -> !directOnly || Boolean.TRUE.equals(s.direct()))
                 .map(JSuper::childKey).distinct().toList();
         return byKeys(children);
     }
 
     List<Decl> byKeys(List<String> keys) {
         if (keys.isEmpty()) return List.of();
-        return query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).in(JDecl.$key, keys)
-                .stream().map(r -> Rows.toDecl(r, root)).toList();
+        return decls(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).in(JDecl.$key, keys));
     }
 
     @Override
     public List<Decl> declsInType(String typeKey) {
-        return query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$ownerKey, typeKey)
-                .stream().map(r -> Rows.toDecl(r, root)).toList();
+        return decls(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).eq(JDecl.$ownerKey, typeKey));
     }
 
     @Override
     public List<String> targetKeysByName(String simpleName) {
-        return query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$targetName, simpleName)
+        return Safe.list(query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid).eq(JRef.$targetName, simpleName))
                 .stream().map(JRef::targetKey).distinct().toList();
     }
 
     @Override
     public Set<String> referencedKeys() {
         var out = new HashSet<String>();
-        for (var r : query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid)) out.add(r.targetKey());
+        for (var r : Safe.list(query(db, JRef.TYPEDEF).eq(JRef.$projectId, pid))) out.add(r.targetKey());
         return out;
     }
 
@@ -105,9 +105,17 @@ public final class DbStore implements Store {
     @Override
     public Stream<Decl> allDecls() {
         var supers = new HashMap<String, List<String>>();
-        for (var s : query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid))
+        for (var s : Safe.list(query(db, JSuper.TYPEDEF).eq(JSuper.$projectId, pid)))
             supers.computeIfAbsent(s.childKey(), k -> new ArrayList<>()).add(s.superKey());
-        return query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid).stream().map(r -> Rows.toDecl(r, root))
+        return decls(query(db, JDecl.TYPEDEF).eq(JDecl.$projectId, pid)).stream()
                 .map(d -> supers.containsKey(d.key()) ? Rows.withSupers(d, supers.get(d.key())) : d);
+    }
+
+    List<Decl> decls(xyz.jphil.arcadedb.datahelper.Query<JDecl> rows) {
+        return Safe.list(rows).stream().map(r -> Rows.toDecl(r, root)).toList();
+    }
+
+    List<Occurrence> occurrences(xyz.jphil.arcadedb.datahelper.Query<JRef> rows) {
+        return Safe.list(rows).stream().map(r -> Rows.toOccurrence(r, root)).toList();
     }
 }

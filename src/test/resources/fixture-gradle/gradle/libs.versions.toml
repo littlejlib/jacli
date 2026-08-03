@@ -1,0 +1,18 @@
+[versions]
+
+asm = "9.8"          # a shared version referenced below
+
+[libraries]
+
+hppc = "com.carrotsearch:hppc:0.10.0"
+asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
+junit = "junit:junit:4.13.2"
+grouped = { group = "org.example", name = "grouped", version = "2.0" }
+
+[libraries.split-table]
+module = "org.example:split"
+version.ref = "asm"
+
+[plugins]
+
+nodejs = { id = "com.github.node-gradle.node", version = "7.0.1" }

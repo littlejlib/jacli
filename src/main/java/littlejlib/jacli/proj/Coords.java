@@ -19,6 +19,13 @@ public record Coords(String groupId, String artifactId, String version, String t
     /** A pom-type dependency is an aggregator or a bill of materials; it never has a jar. */
     public boolean isPomType() { return POM.equals(type); }
 
+    /**
+     * No build file named this project, so it was indexed as a directory of java files. Worth saying out
+     * loud wherever a project is listed: it is the shape a workspace of unrelated projects collapses
+     * into, and it looks identical to a real project once it is in the index.
+     */
+    public static boolean isUnknown(String coords) { return coords == null || coords.startsWith("unknown:unknown"); }
+
     @Override
     public String toString() { return groupId + ":" + artifactId + ":" + version; }
 

@@ -61,6 +61,11 @@ public final class HotProject {
         return Duration.ofMillis(System.currentTimeMillis() - lastUsed).toMinutes();
     }
 
+    /** Touched so recently that a query is probably still walking its scope; not a candidate for eviction. */
+    boolean inUse() {
+        return System.currentTimeMillis() - lastUsed < Hot.GRACE.toMillis();
+    }
+
     String describe() {
         return (pinned ? "pinned " : "hot ") + root + "  " + keys.size() + " dirs watched, "
                 + (watchHealthy ? verifiedClean() ? "verified clean" : "dirty" : "WATCH UNRELIABLE")

@@ -27,7 +27,8 @@ public final class Discover {
         for (var d : types) byPackage.computeIfAbsent(packageOfType(d), k -> new ArrayList<>()).add(d);
         var sb = new StringBuilder(Fmt.meta(prefix == null ? "package tree" : "package tree under " + prefix,
                 null, store.root(), store.meta(),
-                byPackage.size() + " packages, " + Fmt.plural(types.size(), "type", "types")));
+                Fmt.plural(byPackage.size(), "package", "packages") + ", "
+                        + Fmt.plural(types.size(), "type", "types")));
         byPackage.forEach((pkg, list) -> {
             sb.append('\n').append(pkg.isEmpty() ? "<default>" : pkg).append("  (").append(list.size()).append(")\n");
             var names = list.stream().map(Discover::displayName).sorted().toList();
@@ -49,14 +50,23 @@ public final class Discover {
         var wanted = scope == null ? null : scope.trim();
         var type = wanted == null ? null : store.allDecls()
                 .filter(d -> d.kind().isType() && matchesType(d, wanted)).findFirst().orElse(null);
-        if (type == null) return api(store, scope, nameFilter, withDoc, opts);
+        /* Falling back silently would print a plain api header, leaving no sign that --inherited had
+         * been dropped - and an empty answer would then read as "this type inherits nothing". */
+        if (type == null) {
+            var plain = api(store, scope, nameFilter, withDoc, opts);
+            var why = wanted == null
+                    ? "# --inherited needs a type; it was ignored because only a name filter was given.\n"
+                    : "# --inherited was ignored: no type named '" + wanted + "' is indexed here, so there is "
+                            + "no hierarchy to walk. The plain api answer follows.\n";
+            return new Answer(plain.exit(), why + plain.text());
+        }
 
         var chain = new LinkedHashSet<String>();
         collectSupers(store, type.key(), chain, 0);
         var seen = new HashSet<String>();
         var sb = new StringBuilder(Fmt.meta("api " + type.key() + " --inherited"
                         + (nameFilter == null ? "" : " matching '" + nameFilter + "'"),
-                type, store.root(), store.meta(), chain.size() + " types in the hierarchy"));
+                type, store.root(), store.meta(), Fmt.plural(chain.size(), "type", "types") + " in the hierarchy"));
         var shown = 0;
         for (var owner : chain) {
             var members = store.declsInType(owner).stream()

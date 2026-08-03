@@ -11,8 +11,8 @@ import picocli.CommandLine.Option;
         description = "jacli (jack-lee) - java assist cli. Compiler-accurate code navigation over java/maven projects.",
         subcommands = { TreeCmd.class, ApiCmd.class, RefsCmd.class, DefCmd.class, SrcCmd.class,
                 CallersCmd.class, CalleesCmd.class, ImplsCmd.class, UnusedCmd.class, DepsCmd.class,
-                ReleasableCmd.class, ScopeCmd.class, IndexCmd.class, ProjectsCmd.class, CacheCmd.class, StatusCmd.class,
-                DaemonCmd.class })
+                ReleasableCmd.class, DiscoverCmd.class, ScopeCmd.class, IndexCmd.class, ProjectsCmd.class,
+                CacheCmd.class, StatusCmd.class, DaemonCmd.class })
 public final class JacliCli implements Callable<Integer> {
 
     @Option(names = "--brief", description = "Print the short help instead of the tutorial.")
@@ -36,7 +36,31 @@ public final class JacliCli implements Callable<Integer> {
     }
 
     static int runHere(String[] args) {
-        return new CommandLine(new JacliCli()).setCaseInsensitiveEnumValuesAllowed(true).execute(args);
+        return commandLine().execute(args);
+    }
+
+    /**
+     * One place both entry points build the parser, so a run inside the daemon cannot be configured
+     * differently from a run in this process. {@link littlejlib.jacli.daemon.Captured} was already
+     * assembling its own, which is how the subcommands ended up without the help option below.
+     */
+    public static CommandLine commandLine() {
+        var cli = new CommandLine(new JacliCli()).setCaseInsensitiveEnumValuesAllowed(true);
+        cli.getSubcommands().values().forEach(JacliCli::addHelpOption);
+        return cli;
+    }
+
+    /**
+     * The tutorial tells the reader to run {@code jacli <verb> --help}, and every verb rejected it with
+     * exit 2: the standard help mixin is declared on this command only, so picocli never gave the
+     * subcommands a {@code -h}. Only the usage-help option is added, not the whole mixin, because the
+     * mixin's {@code -V} would print nothing on a subcommand that carries no version of its own.
+     */
+    static void addHelpOption(CommandLine sub) {
+        var spec = sub.getCommandSpec();
+        if (spec.findOption("--help") != null) return;
+        spec.addOption(CommandLine.Model.OptionSpec.builder("-h", "--help").usageHelp(true)
+                .description("Show this help message and exit.").build());
     }
 
     /**

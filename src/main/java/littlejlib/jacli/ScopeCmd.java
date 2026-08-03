@@ -16,7 +16,7 @@ import xyz.jphil.arcadedb.datahelper.Upsert;
             "and the implementations in another. Verbs stay single-project by default; --scope widens them.",
             "",
             "  jacli scope                              every declared scope and its members",
-            "  jacli scope luvml --add . --add ..\\luvx-base --add ..\\luvs",
+            "  jacli scope luvml --add . --add ../luvx-base --add ../luvs   (forward slashes even on Windows)",
             "  jacli scope luvml --add .                add the current project to that scope",
             "  jacli scope luvml --remove .             take it out",
             "  jacli scope --suggest                    propose scopes from local-only dependencies",
@@ -24,7 +24,7 @@ import xyz.jphil.arcadedb.datahelper.Upsert;
             "Then:  jacli impls luvx.Frag_I --scope luvml",
             "       jacli unused --scope luvml          finally meaningful for a library",
             "",
-            "Or widen one call without declaring anything:  jacli refs X --with ..\\luvx-base"
+            "Or widen one call without declaring anything:  jacli refs X --with ../luvx-base"
         })
 public final class ScopeCmd implements Callable<Integer> {
 
@@ -53,6 +53,9 @@ public final class ScopeCmd implements Callable<Integer> {
             add.forEach(dir -> set(db, dir, name));
             remove.forEach(dir -> set(db, dir, null));
             return show(db, name);
+        } catch (IllegalArgumentException e) {
+            System.err.println("jacli: " + e.getMessage());
+            return littlejlib.jacli.query.Answer.USAGE;
         } catch (RuntimeException e) {
             System.err.println("jacli: " + e.getMessage());
             return littlejlib.jacli.query.Answer.NOT_INDEXED;
@@ -63,7 +66,7 @@ public final class ScopeCmd implements Callable<Integer> {
 
     int list(com.arcadedb.database.Database db) {
         var groups = Counts.groups(db);
-        var out = new StringBuilder("# " + groups.size() + " declared scopes\n");
+        var out = new StringBuilder("# " + littlejlib.jacli.query.Fmt.plural(groups.size(), "declared scope", "declared scopes") + "\n");
         for (var g : groups) {
             out.append('\n').append(g).append('\n');
             Counts.inGroup(db, g).forEach(p -> out.append("  ").append(p.coords())
@@ -77,7 +80,8 @@ public final class ScopeCmd implements Callable<Integer> {
 
     int show(com.arcadedb.database.Database db, String group) {
         var members = Counts.inGroup(db, group);
-        var out = new StringBuilder("# scope " + group + ": " + members.size() + " projects\n");
+        var out = new StringBuilder("# scope " + group + ": "
+                + littlejlib.jacli.query.Fmt.plural(members.size(), "project", "projects") + "\n");
         members.forEach(p -> out.append("  ").append(p.coords()).append("   ").append(p.root()).append('\n'));
         if (members.isEmpty()) out.append("# empty. Add projects with --add <dir>.\n");
         else out.append("# use it:  jacli <verb> <symbol> --scope ").append(group).append('\n');
@@ -85,7 +89,15 @@ public final class ScopeCmd implements Callable<Integer> {
         return members.isEmpty() ? 1 : 0;
     }
 
+    /**
+     * A path that does not exist is a different answer from one that exists but has not been indexed.
+     * Reporting the second for the first tells the reader to run a verb in a directory they cannot cd
+     * into, and hides the real cause, which on Windows is usually a backslash eaten by the shell.
+     */
     void set(com.arcadedb.database.Database db, Path dir, String group) {
+        if (group != null && !Files.exists(dir))
+            throw new IllegalArgumentException("no such path: " + dir.toAbsolutePath()
+                    + " - that is how it resolved, so compare it with what you typed");
         var root = Projects.findRoot(dir);
         var pid = Home.token(root);
         if (Counts.project(db, pid) == null)

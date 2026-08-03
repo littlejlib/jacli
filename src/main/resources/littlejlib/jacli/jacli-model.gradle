@@ -1,0 +1,132 @@
+// jacli model dump. Read-only: it adds one task per project that describes that project, and nothing else.
+//
+// Two things about this file are not stylistic, and both were learned the hard way against teavm.
+//
+// 1. The description is produced during EXECUTION, and the task is registered on EVERY project rather
+//    than on the root. Gradle 9 will not resolve a configuration without that project's own lock, and a
+//    task running in the root project does not hold it: "Resolution of the configuration
+//    ':jso:impl:compileClasspath' was attempted without an exclusive lock". The failure is not loud - it
+//    is caught, and what comes back is a model whose classpath is empty, which reads as a project with
+//    no dependencies. Registering per project means each task resolves only its own.
+//
+// 2. Source roots come from sourceSet.java.srcDirs, NOT from sourceSet.java.files, which is the set of
+//    .java FILES. Both are FileCollections and both look right until every "source root" is dropped for
+//    not being a directory, leaving a 3,445-file project reporting 12.
+//
+// Applied with -I, so every build in a composite registers the tasks; only the root build's are invoked,
+// and jacli fills in the included builds from their files. Each project writes its own chunk file, which
+// is also what makes parallel execution safe.
+
+def outBase = System.getProperty("jacli.model.out")
+def wantTests = Boolean.parseBoolean(System.getProperty("jacli.model.tests", "false"))
+
+def esc = { Object v -> String.valueOf(v).replace('\t', ' ').replace('\n', ' ') }
+
+def srcDirsOf = { Object sourceDirectorySet ->
+    try { return sourceDirectorySet.srcDirs.collect { it.absolutePath } } catch (Throwable t) { return [] }
+}
+
+def filesOf = { Object collection ->
+    try { return collection.files.collect { it.absolutePath } } catch (Throwable t) { return [] }
+}
+
+def classpathOf = { Object project, Object sourceSet, List notes ->
+    try {
+        return sourceSet.compileClasspath.files.collect { it.absolutePath }
+    } catch (Throwable strict) {
+        notes << (project.path + ' compile classpath incomplete: ' + strict.getMessage())
+        try {
+            def conf = project.configurations.findByName(sourceSet.compileClasspathConfigurationName)
+            if (conf == null) return []
+            return conf.incoming.artifactView { it.lenient = true }.files.files.collect { it.absolutePath }
+        } catch (Throwable lenient) {
+            return []
+        }
+    }
+}
+
+def depsOf = { Object project, Object sourceSet, List notes ->
+    def out = []
+    try {
+        def conf = project.configurations.findByName(sourceSet.compileClasspathConfigurationName)
+        if (conf == null) return out
+        def seen = [:]
+        def root = conf.incoming.resolutionResult.root
+        seen.put(root.id.displayName, 0)
+        def queue = [[root, 0]]
+        while (!queue.isEmpty()) {
+            def head = queue.remove(0)
+            def component = head[0]
+            def depth = head[1]
+            component.dependencies.each { dep ->
+                if (!(dep instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult)) return
+                def selected = dep.selected
+                def key = selected.id.displayName
+                if (seen.containsKey(key)) return
+                seen.put(key, depth + 1)
+                queue << [selected, depth + 1]
+                if (selected.id instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier) {
+                    def id = selected.id
+                    out << [depth + 1, id.group + ':' + id.module + ':' + id.version]
+                }
+            }
+        }
+    } catch (Throwable t) {
+        notes << (project.path + ' dependency graph unavailable: ' + t.getMessage())
+    }
+    return out
+}
+
+def describe = { Object project, String path, StringBuilder sb, List notes ->
+    def sets = project.extensions.findByName('sourceSets')
+    if (sets == null) return
+    def main = sets.findByName('main')
+    if (main == null) return
+    sb.append('M\t').append(esc(path)).append('\t').append(esc(project.projectDir.absolutePath)).append('\n')
+    srcDirsOf(main.java).each { sb.append('S\t').append(esc(path)).append('\t').append(esc(it)).append('\n') }
+    filesOf(main.output.classesDirs).each { sb.append('O\t').append(esc(path)).append('\t').append(esc(it)).append('\n') }
+    classpathOf(project, main, notes).each { sb.append('C\t').append(esc(path)).append('\t').append(esc(it)).append('\n') }
+    depsOf(project, main, notes).each {
+        sb.append('D\t').append(esc(path)).append('\t').append(it[0]).append('\t').append(esc(it[1])).append('\n')
+    }
+    def test = wantTests ? sets.findByName('test') : null
+    if (test == null) return
+    srcDirsOf(test.java).each { sb.append('T\t').append(esc(path)).append('\t').append(esc(it)).append('\n') }
+    classpathOf(project, test, notes).each { sb.append('C\t').append(esc(path)).append('\t').append(esc(it)).append('\n') }
+}
+
+def dumpProject = { Object project ->
+    def isRootBuild = gradle.parent == null
+    def isHeader = isRootBuild && project == gradle.rootProject
+    def buildName = isRootBuild ? '' : gradle.rootProject.name
+    def path = buildName + project.path
+    def notes = []
+    def sb = new StringBuilder()
+    if (isHeader) {
+        sb.append('V\t1\n')
+        sb.append('R\t').append(esc(gradle.rootProject.group)).append('\t')
+                .append(esc(gradle.rootProject.name)).append('\t')
+                .append(esc(gradle.rootProject.version)).append('\n')
+    }
+    try {
+        describe(project, path, sb, notes)
+    } catch (Throwable t) {
+        notes << (path + ' skipped: ' + t.getMessage())
+    }
+    notes.unique().each { sb.append('N\t').append(esc(it)).append('\n') }
+    def safe = isHeader ? 'root' : ('p' + path).replaceAll('[^A-Za-z0-9_.-]', '_')
+    new File(outBase + '.' + safe).setText(sb.toString(), 'UTF-8')
+}
+
+gradle.allprojects { project ->
+    project.tasks.register('jacliModel') { task ->
+        task.setGroup('help')
+        task.setDescription('Writes a description of this project for jacli. Reads only.')
+        try {
+            task.notCompatibleWithConfigurationCache('reads the whole project model')
+        } catch (Throwable ignored) {
+            // older gradle has no such method; jacli passes --no-configuration-cache anyway
+        }
+        task.doLast { dumpProject(project) }
+    }
+}

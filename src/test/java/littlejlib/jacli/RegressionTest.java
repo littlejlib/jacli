@@ -266,4 +266,43 @@ class RegressionTest {
         assertEquals(Answer.OK, Verbs.def(store, "fx.Kind", OPTS).exit());
         assertEquals(Answer.OK, Verbs.def(store, "fx.Outer.Inner", OPTS).exit());
     }
+
+    @Test
+    @DisplayName("api --inherited on an unknown type says the option was ignored, rather than answering as plain api")
+    void inheritedSaysWhenItWasIgnored() {
+        var answer = Discover.inherited(Fixture.store(), "fx.NoSuchTypeAtAll", null, false, OPTS);
+        assertTrue(answer.text().contains("--inherited was ignored"),
+                "a silent fallback leaves an empty answer reading as 'inherits nothing': " + answer.text());
+        assertTrue(answer.text().contains("NoSuchTypeAtAll"), answer.text());
+    }
+
+    @Test
+    @DisplayName("api --inherited with only a name filter says why it could not walk a hierarchy")
+    void inheritedNeedsAType() {
+        var answer = Discover.inherited(Fixture.store(), null, "area", false, OPTS);
+        assertTrue(answer.text().contains("--inherited"), answer.text());
+        assertTrue(answer.text().contains("needs a type"), answer.text());
+    }
+
+    /**
+     * Asserted in the positive, on types whose counts really are one: the first version of this test
+     * used fx.Marker, whose hierarchy is two types, so "1 types" could never have appeared and the
+     * assertion held whether or not the code was fixed.
+     */
+    @Test
+    @DisplayName("counts of one are not reported in the plural")
+    void countsOfOneReadCorrectly() {
+        var inherited = Discover.inherited(Fixture.store(), "fx.Shape", null, false, OPTS);
+        assertTrue(inherited.text().contains("1 type in the hierarchy"), inherited.text());
+        var tree = Discover.tree(Fixture.store(), "fx");
+        assertTrue(tree.text().contains("1 package,"), tree.text());
+    }
+
+    @Test
+    @DisplayName("a project with no build file of its own is recognisable as such")
+    void unknownCoordsAreRecognisable() {
+        assertTrue(littlejlib.jacli.proj.Coords.isUnknown("unknown:unknown:0"));
+        assertTrue(littlejlib.jacli.proj.Coords.isUnknown(null));
+        assertFalse(littlejlib.jacli.proj.Coords.isUnknown("io.github.luvml:luvml:2.0"));
+    }
 }

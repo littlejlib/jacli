@@ -38,6 +38,19 @@ public final class Counts {
         return row == null || row.scopeGroup() == null || row.scopeGroup().isBlank() ? null : row.scopeGroup();
     }
 
+    /**
+     * Removes every trace of one project. The index is a cache, but a wrong entry in it is worse than a
+     * missing one — a directory indexed as an accidental catch-all keeps answering questions about files
+     * that were never meant to be one project, and until now the only cure was clearing all of them.
+     */
+    public static boolean forget(Database db, String pid) {
+        if (project(db, pid) == null) return false;
+        Indexer.deleteProjectRows(db, pid);
+        xyz.jphil.arcadedb.datahelper.Delete.matching(
+                query(db, JProject.TYPEDEF).eq(JProject.$projectId, pid));
+        return true;
+    }
+
     public static List<String> groups(Database db) {
         return all(db).stream().map(JProject::scopeGroup).filter(Objects::nonNull)
                 .filter(s -> !s.isBlank()).distinct().sorted().toList();

@@ -29,6 +29,15 @@ public final class Db {
 
     public static final String DB_NAME = "jacli";
 
+    /** Every type the index holds, in one place, so schema init and repair cannot drift apart. */
+    public static final List<xyz.jphil.arcadedb.datahelper.TypeDef<? extends xyz.jphil.datahelper.DataHelper_I<?>>>
+            TYPES = List.of(JProject.TYPEDEF, JFile.TYPEDEF, JDecl.TYPEDEF, JRef.TYPEDEF, JSuper.TYPEDEF);
+
+    /** Type names, for the index-level operations that take no generics. */
+    public static List<String> typeNames() {
+        return TYPES.stream().map(t -> t.definition().getSimpleName()).toList();
+    }
+
     private static Db instance;
     final DatabaseFactory factory;
     final Database db;
@@ -37,7 +46,7 @@ public final class Db {
         var dbPath = Home.dir("db").resolve(DB_NAME);
         factory = new DatabaseFactory(dbPath.toString());
         db = factory.exists() ? factory.open() : factory.create();
-        InitDoc.initDocTypes(db, JProject.TYPEDEF, JFile.TYPEDEF, JDecl.TYPEDEF, JRef.TYPEDEF, JSuper.TYPEDEF);
+        InitDoc.initDocTypes(db, TYPES.toArray(xyz.jphil.arcadedb.datahelper.TypeDef[]::new));
     }
 
     public static synchronized Db get() {

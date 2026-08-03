@@ -1,8 +1,12 @@
 jacli (jack-lee) - java assist cli. Compiler-accurate code navigation.
 
+WHERE ARE THEY (you don't know what projects exist yet)
+  jacli discover [<dir>]   project roots under a directory, reading/indexing nothing; --as-scope <name> prints the scope command
+
 WHAT EXISTS (you don't know the name yet)
   jacli tree    [<pkg>]    packages and type names - the cheapest look at a project
   jacli api     <scope>    what a type/package offers, with use counts; --name <substr> searches names
+  jacli api <type> --inherited    everything callable on it, supertypes folded in - the one to use in interface-heavy code
 
 WHAT IS IT (you have a name)
   jacli def     <symbol>   declaration, signature, javadoc, use counts
@@ -16,18 +20,30 @@ HOW IS IT USED
   jacli unused             public API nothing in this project references
 
 SEVERAL PROJECTS AS ONE
-  jacli scope --suggest    propose scopes; jacli scope <name> --add <dir> declares one
+  jacli scope --suggest    propose scopes FROM ALREADY-INDEXED deps only - use `discover --as-scope <name>` for a fresh family
+  jacli scope <name> --add <dir> declares one (index it first if untouched; use forward slashes on Windows)
   any verb --scope <name>  answer across the whole family;  --with <dir>  widens one call
+  Scope tier = worst member's tier. A scope of any size stays warm; evictions are -v only.
 
-DEPENDENCIES (poms only, no network)
-  jacli deps    [-d N]     the closure, with each artifact's origin: central / remote / LOCAL-ONLY / MISSING
+MAVEN OR GRADLE (detected; everything above is the same either way)
+  Modules come from <modules> or from settings.gradle include(...) - never a directory walk, so a tree the build abandoned stays out.
+  Gradle model: cache -> gradlew --offline -> gradlew -> read the build files. `jacli status` names which step answered.
+  Configuring a composite build compiles its build logic; JACLI_GRADLE_RUN=false stops jacli launching gradle at all.
+  Both build files in one directory? maven wins; --build gradle overrides.
+
+DEPENDENCIES (no compilation; poms only on maven)
+  jacli deps    [-d N]     the closure, with each artifact's origin: central / remote / LOCAL-ONLY / cached / MISSING
   jacli deps --dependents <groupId:artifactId>    which indexed projects depend on it
   jacli releasable         could anyone else build this? names every blocker and its fix. exit 1 if blocked
+  On gradle the graph is gradle's own resolution result, but nothing records WHICH repo served a jar - so the verdict reads the declared repositories, and mavenLocal() is the blocker it names.
 
   jacli index [--watch] | projects | cache | status | daemon
+  jacli cache --forget <dir>      drop ONE project from the index, leaving the rest
+  jacli cache --repair            if a verb says "index rows could not be read" - rebuilds structures, reindexes nothing. --reindex does NOT fix that.
+  -p at a directory that CONTAINS projects rather than being one is refused, with the roots listed. `jacli projects` flags any such entry already indexed.
 
 A LIBRARY YOU HAVE NOT OPENED
-  jacli tree -T io.github.luvml:luvs:2.0        maven coordinates from ~/.m2, a git URL, or a dir
+  jacli tree -T io.github.luvml:luvs:2.0        coordinates from ~/.m2 or the gradle cache, a git URL, or a dir
   jacli api  -T info.picocli:picocli:4.7.7 --name Option
   Sources jar if present, else the jar's class files. Read on demand, never indexed.
 

@@ -12,9 +12,10 @@ import module java.base;
  */
 public record Origin(Kind kind, String repoId) {
 
-    public enum Kind { REMOTE, LOCAL_ONLY, MISSING }
+    public enum Kind { REMOTE, LOCAL_ONLY, CACHED, MISSING }
 
     public static final Origin MISSING = new Origin(Kind.MISSING, null);
+    public static final Origin CACHED = new Origin(Kind.CACHED, null);
     public static final String CENTRAL = "central";
 
     public static Origin of(Coords c) {
@@ -52,6 +53,7 @@ public record Origin(Kind kind, String repoId) {
         return switch (kind) {
             case REMOTE -> CENTRAL.equals(repoId) ? "central" : "remote:" + repoId;
             case LOCAL_ONLY -> "LOCAL-ONLY";
+            case CACHED -> "cached";
             case MISSING -> "MISSING";
         };
     }

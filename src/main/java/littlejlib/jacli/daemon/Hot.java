@@ -25,8 +25,8 @@ import static java.nio.file.StandardWatchEventKinds.*;
  */
 public final class Hot implements littlejlib.jacli.index.Freshness {
 
-    public static final int MAX_HOT = 4;
-    public static final Duration TTL = Duration.ofMinutes(30);
+    public static final int MAX_HOT = 4, HARD_MAX = 16;
+    public static final Duration TTL = Duration.ofMinutes(30), GRACE = Duration.ofSeconds(30);
 
     final WatchService service;
     final Map<String, HotProject> byPid = new ConcurrentHashMap<>();
@@ -131,16 +131,30 @@ public final class Hot implements littlejlib.jacli.index.Freshness {
 
     public void markAllDirty() { byPid.values().forEach(HotProject::markDirty); }
 
-    /** Least recently used first, pinned projects exempt, and anything idle past the TTL. */
+    /**
+     * Least recently used first, pinned projects exempt, and anything idle past the TTL.
+     * <p>
+     * A query {@code --scope}d over more projects than the cap used to evict its own working set while
+     * it was still running: the members are touched one after another, so reaching member five put the
+     * map over the cap and the least recently used entry was member one, milliseconds old. Every scoped
+     * call then re-swept every member, defeating the daemon for the case it exists to serve. So recent
+     * use is treated as use: within {@link #GRACE} a project is in flight, not idle, and the soft cap
+     * yields to it. {@link #HARD_MAX} still bounds the warm javac file managers, because that grace must
+     * not become a way for a session touching many projects to hold all of them open at once.
+     */
     synchronized void evictExcess() {
         byPid.values().stream().filter(hp -> !hp.pinned)
                 .filter(hp -> hp.idleMinutes() >= TTL.toMinutes()).toList()
                 .forEach(hp -> evict(hp, "idle " + hp.idleMinutes() + " min"));
-        var evictable = byPid.values().stream().filter(hp -> !hp.pinned)
+        trim(hp -> !hp.pinned && !hp.inUse(), MAX_HOT, "least recently used, over the cap of " + MAX_HOT);
+        trim(hp -> !hp.pinned, HARD_MAX, "least recently used, over the hard ceiling of " + HARD_MAX);
+    }
+
+    void trim(Predicate<HotProject> evictable, int cap, String why) {
+        var candidates = byPid.values().stream().filter(evictable)
                 .sorted(Comparator.comparingLong(hp -> hp.lastUsed)).toList();
-        var over = byPid.size() - MAX_HOT;
-        for (var i = 0; i < over && i < evictable.size(); i++)
-            evict(evictable.get(i), "least recently used, over the cap of " + MAX_HOT);
+        var over = byPid.size() - cap;
+        for (var i = 0; i < over && i < candidates.size(); i++) evict(candidates.get(i), why);
     }
 
     public synchronized void evict(HotProject hp, String why) {
@@ -151,7 +165,9 @@ public final class Hot implements littlejlib.jacli.index.Freshness {
         });
         hp.keys.clear();
         onEvict.accept(hp.pid);
-        System.err.println("jacli watch: released " + hp.root.getFileName() + " (" + why + ")");
+        /* Routine housekeeping that by design never changes an answer, so it belongs under -v rather
+         * than in the middle of every reply. */
+        if (Captured.verbose) System.err.println("jacli watch: released " + hp.root.getFileName() + " (" + why + ")");
     }
 
     public synchronized void closeAll() {
