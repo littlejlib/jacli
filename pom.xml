@@ -137,6 +137,15 @@
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
+                                <!-- Keep OUR arcadedb-log.properties, drop the engine copy whose FileHandler
+                                     writes ./log/arcadedb.log into the working directory. See the tutorial:
+                                     the ArcadeDB notes in project-journals. -->
+                                <filter>
+                                    <artifact>com.arcadedb:arcadedb-engine</artifact>
+                                    <excludes>
+                                        <exclude>arcadedb-log.properties</exclude>
+                                    </excludes>
+                                </filter>
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
