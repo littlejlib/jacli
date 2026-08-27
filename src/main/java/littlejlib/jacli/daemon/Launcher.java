@@ -26,6 +26,9 @@ public final class Launcher {
                 + "ms; see " + Home.file(LOG));
     }
 
+    static final long MAX_LOG_BYTES = 8L * 1024 * 1024;
+    static final int KEEP = 3;
+
     static void spawn(Consumer<String> log) throws IOException {
         var cmd = new ArrayList<String>();
         cmd.add(javaBinary());
@@ -33,10 +36,40 @@ public final class Launcher {
         cmd.add(classpath());
         cmd.add(Server.class.getName());
         log.accept("starting daemon: " + String.join(" ", cmd));
+        var logFile = Home.file(LOG);
+        rotate(logFile);
         new ProcessBuilder(cmd)
-                .redirectOutput(ProcessBuilder.Redirect.appendTo(Home.file(LOG).toFile()))
+                .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()))
                 .redirectErrorStream(true)
                 .start();
+    }
+
+    /**
+     * The daemon's output is an OS-level append with no framework behind it, so nothing bounded it:
+     * daemon.log reached 571 MB, larger than jacli's own index. Rolls at 8 MB keeping 3 generations.
+     *
+     * <p>Rotation happens here, at spawn, because that is the only moment this process controls. A
+     * daemon that runs for months without a restart can still grow past the cap within that one run;
+     * bounding it properly from inside would mean a logging framework rather than a redirect. In
+     * practice the daemon restarts whenever the jar changes or the machine reboots, which is often
+     * enough for this to hold.
+     *
+     * <p>A log that cannot be rotated must never stop the daemon starting, hence the swallowed
+     * IOException.
+     */
+    static void rotate(Path logFile) {
+        try {
+            if (!Files.exists(logFile) || Files.size(logFile) < MAX_LOG_BYTES) return;
+            Files.deleteIfExists(logFile.resolveSibling(LOG + "." + KEEP));
+            for (var i = KEEP - 1; i >= 1; i--) {
+                var from = logFile.resolveSibling(LOG + "." + i);
+                if (Files.exists(from))
+                    Files.move(from, logFile.resolveSibling(LOG + "." + (i + 1)), StandardCopyOption.REPLACE_EXISTING);
+            }
+            Files.move(logFile, logFile.resolveSibling(LOG + ".1"), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            // Not worth failing a daemon start over.
+        }
     }
 
     static String javaBinary() {
