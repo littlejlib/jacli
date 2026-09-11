@@ -4,7 +4,7 @@ import module java.base;
 import com.arcadedb.database.Database;
 import littlejlib.jacli.core.*;
 import littlejlib.jacli.query.*;
-import static xyz.jphil.arcadedb.datahelper.Query.query;
+import static datapotter.arcadedbhelper.Query.query;
 
 /**
  * The indexed store. Every lookup is an indexed read, which is the whole point: the javac pass that
@@ -111,11 +111,11 @@ public final class DbStore implements Store {
                 .map(d -> supers.containsKey(d.key()) ? Rows.withSupers(d, supers.get(d.key())) : d);
     }
 
-    List<Decl> decls(xyz.jphil.arcadedb.datahelper.Query<JDecl> rows) {
+    List<Decl> decls(datapotter.arcadedbhelper.Query<JDecl> rows) {
         return Safe.list(rows).stream().map(r -> Rows.toDecl(r, root)).toList();
     }
 
-    List<Occurrence> occurrences(xyz.jphil.arcadedb.datahelper.Query<JRef> rows) {
+    List<Occurrence> occurrences(datapotter.arcadedbhelper.Query<JRef> rows) {
         return Safe.list(rows).stream().map(r -> Rows.toOccurrence(r, root)).toList();
     }
 }

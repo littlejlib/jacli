@@ -4,9 +4,9 @@ import module java.base;
 import com.arcadedb.database.Database;
 import littlejlib.jacli.core.*;
 import littlejlib.jacli.proj.*;
-import xyz.jphil.arcadedb.datahelper.Delete;
-import xyz.jphil.arcadedb.datahelper.Indexes;
-import static xyz.jphil.arcadedb.datahelper.Query.query;
+import datapotter.arcadedbhelper.Delete;
+import datapotter.arcadedbhelper.Indexes;
+import static datapotter.arcadedbhelper.Query.query;
 
 /**
  * Writes an analysis into the index. Two modes: a whole project, and a set of changed files.

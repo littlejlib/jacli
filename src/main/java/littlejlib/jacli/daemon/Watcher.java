@@ -3,7 +3,7 @@ package littlejlib.jacli.daemon;
 import module java.base;
 import littlejlib.jacli.index.*;
 import static java.nio.file.StandardWatchEventKinds.*;
-import static xyz.jphil.arcadedb.datahelper.Query.query;
+import static datapotter.arcadedbhelper.Query.query;
 
 /**
  * Two threads over the hot set.

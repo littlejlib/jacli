@@ -1,7 +1,7 @@
 package littlejlib.jacli.index;
 
-import xyz.jphil.arcadedb.datahelper.ArcadeData;
-import xyz.jphil.arcadedb.datahelper.TypeDef;
+import datapotter.arcadedbhelper.ArcadeData;
+import datapotter.arcadedbhelper.TypeDef;
 
 /**
  * A declaration. {@code endLine} is what makes a source view a file slice rather than a compilation,

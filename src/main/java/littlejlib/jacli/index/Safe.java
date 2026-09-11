@@ -1,8 +1,8 @@
 package littlejlib.jacli.index;
 
 import module java.base;
-import xyz.jphil.arcadedb.datahelper.ArcadeDoc_I;
-import xyz.jphil.arcadedb.datahelper.Query;
+import datapotter.arcadedbhelper.ArcadeDoc_I;
+import datapotter.arcadedbhelper.Query;
 
 /**
  * Reads a query without letting one unreadable row destroy the answer, and says what it lost.

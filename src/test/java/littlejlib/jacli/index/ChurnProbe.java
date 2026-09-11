@@ -4,8 +4,8 @@ import module java.base;
 import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
 import com.arcadedb.exception.RecordNotFoundException;
-import xyz.jphil.arcadedb.datahelper.InitDoc;
-import static xyz.jphil.arcadedb.datahelper.Query.query;
+import datapotter.arcadedbhelper.InitDoc;
+import static datapotter.arcadedbhelper.Query.query;
 
 /**
  * Reproduces the reindex corruption without javac, so a cycle costs seconds rather than the four
@@ -58,7 +58,7 @@ public final class ChurnProbe {
         }
         if ("window".equals(strategy)) {
             var t0 = System.nanoTime();
-            xyz.jphil.arcadedb.datahelper.Indexes.duringBulkChange(db, Db.TYPES,
+            datapotter.arcadedbhelper.Indexes.duringBulkChange(db, Db.TYPES,
                     () -> Indexer.deleteProjectRows(db, PID));
             System.out.println("  (typed delete inside a bulk-change window "
                     + (System.nanoTime() - t0) / 1_000_000 + "ms)");
@@ -66,13 +66,13 @@ public final class ChurnProbe {
         }
         if ("unindexed".equals(strategy)) {
             var t0 = System.nanoTime();
-            var dropped = xyz.jphil.arcadedb.datahelper.Indexes.drop(db, "JRef");
+            var dropped = datapotter.arcadedbhelper.Indexes.drop(db, "JRef");
             var dropMs = (System.nanoTime() - t0) / 1_000_000;
             var t1 = System.nanoTime();
             db.transaction(() -> db.command("sql", "DELETE FROM JRef WHERE projectId = ?", PID));
             var deleteMs = (System.nanoTime() - t1) / 1_000_000;
             var t2 = System.nanoTime();
-            xyz.jphil.arcadedb.datahelper.Indexes.rebuild(db, JRef.TYPEDEF);
+            datapotter.arcadedbhelper.Indexes.rebuild(db, JRef.TYPEDEF);
             System.out.println("  (dropped " + dropped + " indexes " + dropMs + "ms, unindexed delete "
                     + deleteMs + "ms, rebuild " + (System.nanoTime() - t2) / 1_000_000 + "ms)");
             return;
@@ -81,7 +81,7 @@ public final class ChurnProbe {
         db.transaction(() -> db.command("sql", "DELETE FROM JRef WHERE projectId = ?", PID));
         var deleteMs = (System.nanoTime() - t0) / 1_000_000;
         var t1 = System.nanoTime();
-        var rebuilt = xyz.jphil.arcadedb.datahelper.Indexes.rebuild(db, JRef.TYPEDEF);
+        var rebuilt = datapotter.arcadedbhelper.Indexes.rebuild(db, JRef.TYPEDEF);
         System.out.println("  (sql delete " + deleteMs + "ms, rebuild " + rebuilt + " indexes "
                 + (System.nanoTime() - t1) / 1_000_000 + "ms)");
     }

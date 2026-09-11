@@ -7,7 +7,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
-import xyz.jphil.arcadedb.datahelper.Upsert;
+import datapotter.arcadedbhelper.Upsert;
 
 @Command(name = "scope", description = "Declare that several projects belong together, so one query can span them.",
         footer = {

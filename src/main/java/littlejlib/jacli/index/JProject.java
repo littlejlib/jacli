@@ -1,7 +1,7 @@
 package littlejlib.jacli.index;
 
-import xyz.jphil.arcadedb.datahelper.ArcadeData;
-import xyz.jphil.arcadedb.datahelper.TypeDef;
+import datapotter.arcadedbhelper.ArcadeData;
+import datapotter.arcadedbhelper.TypeDef;
 
 /**
  * One indexed project (a maven reactor root, so a multi-module build is one row and cross-module

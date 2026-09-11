@@ -1,7 +1,7 @@
 package littlejlib.jacli.index;
 
-import xyz.jphil.arcadedb.datahelper.ArcadeData;
-import xyz.jphil.arcadedb.datahelper.TypeDef;
+import datapotter.arcadedbhelper.ArcadeData;
+import datapotter.arcadedbhelper.TypeDef;
 
 /** Size and mtime per source file, which is how the index knows what to re-analyse. No content hashing. */
 @ArcadeData

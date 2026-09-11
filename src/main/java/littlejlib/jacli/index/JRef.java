@@ -1,7 +1,7 @@
 package littlejlib.jacli.index;
 
-import xyz.jphil.arcadedb.datahelper.ArcadeData;
-import xyz.jphil.arcadedb.datahelper.TypeDef;
+import datapotter.arcadedbhelper.ArcadeData;
+import datapotter.arcadedbhelper.TypeDef;
 
 /**
  * One reference occurrence. This is the bulk of the index — 13067 rows for a 488-file project — and

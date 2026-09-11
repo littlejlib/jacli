@@ -6,7 +6,7 @@ import littlejlib.jacli.proj.*;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
-import xyz.jphil.arcadedb.datahelper.Upsert;
+import datapotter.arcadedbhelper.Upsert;
 
 @Command(name = "index", description = "Index a project now, and optionally keep watching it.",
         footer = {

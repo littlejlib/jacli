@@ -5,7 +5,7 @@ import com.arcadedb.database.Database;
 import littlejlib.jacli.core.*;
 import littlejlib.jacli.proj.*;
 import littlejlib.jacli.query.*;
-import static xyz.jphil.arcadedb.datahelper.Query.query;
+import static datapotter.arcadedbhelper.Query.query;
 
 /**
  * Keeps a project's index current and hands out a store to query it. Holds a warm {@link Analyzer}

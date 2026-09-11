@@ -1,7 +1,7 @@
 package littlejlib.jacli.index;
 
-import xyz.jphil.arcadedb.datahelper.ArcadeData;
-import xyz.jphil.arcadedb.datahelper.TypeDef;
+import datapotter.arcadedbhelper.ArcadeData;
+import datapotter.arcadedbhelper.TypeDef;
 
 /**
  * One "child declares super" edge, flattened into a row: a type's direct supertype, or a method's

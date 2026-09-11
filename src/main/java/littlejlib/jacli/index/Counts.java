@@ -2,8 +2,8 @@ package littlejlib.jacli.index;
 
 import module java.base;
 import com.arcadedb.database.Database;
-import xyz.jphil.arcadedb.datahelper.Upsert;
-import static xyz.jphil.arcadedb.datahelper.Query.query;
+import datapotter.arcadedbhelper.Upsert;
+import static datapotter.arcadedbhelper.Query.query;
 
 /** Keeps the project row's totals honest after an incremental write, so reported coverage is real. */
 public final class Counts {
@@ -46,7 +46,7 @@ public final class Counts {
     public static boolean forget(Database db, String pid) {
         if (project(db, pid) == null) return false;
         Indexer.deleteProjectRows(db, pid);
-        xyz.jphil.arcadedb.datahelper.Delete.matching(
+        datapotter.arcadedbhelper.Delete.matching(
                 query(db, JProject.TYPEDEF).eq(JProject.$projectId, pid));
         return true;
     }

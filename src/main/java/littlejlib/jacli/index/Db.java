@@ -4,7 +4,7 @@ import module java.base;
 import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
 import littlejlib.jacli.proj.Home;
-import xyz.jphil.arcadedb.datahelper.InitDoc;
+import datapotter.arcadedbhelper.InitDoc;
 
 /**
  * The embedded index, opened once per process, through {@link DatabaseFactory} rather than
@@ -30,7 +30,7 @@ public final class Db {
     public static final String DB_NAME = "jacli";
 
     /** Every type the index holds, in one place, so schema init and repair cannot drift apart. */
-    public static final List<xyz.jphil.arcadedb.datahelper.TypeDef<? extends xyz.jphil.datahelper.DataHelper_I<?>>>
+    public static final List<datapotter.arcadedbhelper.TypeDef<? extends datapotter.datahelper.DataHelper_I<?>>>
             TYPES = List.of(JProject.TYPEDEF, JFile.TYPEDEF, JDecl.TYPEDEF, JRef.TYPEDEF, JSuper.TYPEDEF);
 
     /** Type names, for the index-level operations that take no generics. */
@@ -46,7 +46,7 @@ public final class Db {
         var dbPath = Home.dir("db").resolve(DB_NAME);
         factory = new DatabaseFactory(dbPath.toString());
         db = factory.exists() ? factory.open() : factory.create();
-        InitDoc.initDocTypes(db, TYPES.toArray(xyz.jphil.arcadedb.datahelper.TypeDef[]::new));
+        InitDoc.initDocTypes(db, TYPES.toArray(datapotter.arcadedbhelper.TypeDef[]::new));
     }
 
     public static synchronized Db get() {

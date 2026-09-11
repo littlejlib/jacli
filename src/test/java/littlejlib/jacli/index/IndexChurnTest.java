@@ -5,11 +5,11 @@ import com.arcadedb.database.Database;
 import com.arcadedb.database.DatabaseFactory;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
-import xyz.jphil.arcadedb.datahelper.Indexes;
-import xyz.jphil.arcadedb.datahelper.InitDoc;
-import xyz.jphil.arcadedb.datahelper.TypeDef;
+import datapotter.arcadedbhelper.Indexes;
+import datapotter.arcadedbhelper.InitDoc;
+import datapotter.arcadedbhelper.TypeDef;
 import static org.junit.jupiter.api.Assertions.*;
-import static xyz.jphil.arcadedb.datahelper.Query.query;
+import static datapotter.arcadedbhelper.Query.query;
 
 /**
  * Replacing a project's rows must leave the index agreeing with the records.
