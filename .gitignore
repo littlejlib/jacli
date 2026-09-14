@@ -10,3 +10,17 @@ run.sh
 # hash, so it must never be published.
 config/
 log/
+
+# Agent context. These carry real ids, paths and internal reasoning, so they stay out of the
+# repository whether or not they happen to exist today.
+.claude
+CLAUDE.md
+
+# Credentials and build output that must never be published.
+dist/
+credentials.json
+*.key
+*.pem
+*.p12
+*.log
+*.jar
