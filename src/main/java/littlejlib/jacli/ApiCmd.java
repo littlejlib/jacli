@@ -28,12 +28,17 @@ public final class ApiCmd implements Callable<Integer> {
     @Mixin
     Common common;
 
-    @Parameters(index = "0", arity = "0..1", paramLabel = "<type-or-package>",
-            description = "A type, or a package prefix. Omit to search the whole project with --name.")
-    String scope;
+    @Parameters(index = "0", arity = "0..*", paramLabel = "<type-or-package>",
+            description = { "A type, or a package prefix. Omit to search the whole project with --name.",
+                "Several may be given: they are answered together against one index load." })
+    List<String> scopes = new ArrayList<>();
 
-    @Option(names = "--name", paramLabel = "<substring>",
-            description = "Keep only declarations whose name contains this, case-insensitively.")
+    @Option(names = "--name", paramLabel = "<pattern>",
+            description = { "Keep only declarations whose name matches, case-insensitively. One of:",
+                "  post              a substring",
+                "  post|reply|send   any of these substrings - one call for a family of names",
+                "  get*Name          a glob, * any run and ? one character, anchored both ends",
+                "  ~^on[A-Z]         a full regular expression, after the ~" })
     String name;
 
     @Option(names = "--doc", description = "Include the javadoc first sentence of each declaration.")
@@ -46,17 +51,29 @@ public final class ApiCmd implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            if (scope == null && name == null) {
+            if (scopes.isEmpty() && name == null) {
                 System.err.println("jacli: give a type or package, or --name <substring>, or both. "
                         + "jacli tree lists what exists.");
                 return Answer.USAGE;
             }
+            Fmt.beginAnswer();
             var store = common.store();
-            var answer = inherited
-                    ? Discover.inherited(store, scope, name, doc, common.opts())
-                    : Discover.api(store, scope, name, doc, common.opts());
-            common.emit(answer.text());
-            return answer.exit();
+            var opts = common.opts();
+            /* No scope at all is still one question - "anything named X anywhere" - so the null
+             * stands in for it rather than being skipped. */
+            var asked = scopes.isEmpty() ? Collections.<String>singletonList(null) : scopes;
+            var text = new StringBuilder();
+            var exits = new ArrayList<Integer>();
+            for (var scope : asked) {
+                var answer = inherited
+                        ? Discover.inherited(store, scope, name, doc, opts)
+                        : Discover.api(store, scope, name, doc, opts);
+                if (!exits.isEmpty()) text.append('\n');
+                text.append(answer.text());
+                exits.add(answer.exit());
+            }
+            common.emit(text.toString());
+            return QueryCmd.combine(exits);
         } catch (IllegalStateException e) {
             System.err.println("jacli: " + e.getMessage());
             return Answer.NOT_INDEXED;

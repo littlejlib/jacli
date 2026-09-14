@@ -18,4 +18,18 @@ public final class Cwd {
     public static Path get() { return value; }
 
     public static void set(Path p) { value = p.toAbsolutePath().normalize(); }
+
+    /**
+     * Resolve a path the caller typed. EVERY user-supplied path must come through here rather than
+     * through {@code toAbsolutePath()}, which resolves against the JVM's own default directory — and
+     * inside the daemon that is wherever the daemon happened to be started, not where the caller is.
+     * <p>
+     * That mismatch is not theoretical. {@code jacli scope luvml --add luvml} run from the luvml
+     * workspace produced {@code C:/user/github-mirror/konsoletyper/teavm/usercodeluvmlluvml} — the
+     * daemon's cwd, with the argument glued on — and reported it as "not indexed yet", sending the
+     * reader to look for a directory that had never existed.
+     */
+    public static Path resolve(Path p) {
+        return p == null ? null : p.isAbsolute() ? p.normalize() : value.resolve(p).normalize();
+    }
 }

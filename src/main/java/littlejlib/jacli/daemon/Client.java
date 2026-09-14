@@ -35,11 +35,25 @@ public final class Client {
     }
 
     static Response attempt(Info info, List<String> args) throws IOException {
+        return attempt(info, args, Client::printNote);
+    }
+
+    /**
+     * Notes are printed the moment they arrive rather than collected with the reply, which is the
+     * entire point of them: a caller staring at a cold index needs to know within milliseconds that
+     * work has started, not to be told afterwards how long it took.
+     */
+    static void printNote(String text) {
+        System.err.println("jacli: " + text);
+        System.err.flush();
+    }
+
+    static Response attempt(Info info, List<String> args, Consumer<String> onNote) throws IOException {
         try (var socket = new Socket()) {
             socket.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), info.port()), CONNECT_TIMEOUT_MS);
             socket.setSoTimeout(READ_TIMEOUT_MS);
             Protocol.writeRequest(socket.getOutputStream(), Build.STAMP, Cwd.get().toString(), args);
-            return Protocol.readResponse(socket.getInputStream());
+            return Protocol.readResponse(socket.getInputStream(), onNote);
         }
     }
 
@@ -47,7 +61,7 @@ public final class Client {
         try {
             var info = Info.read();
             if (info == null || !info.processAlive()) return null;
-            return attempt(info, List.of("--daemon-ping")).stdout().trim();
+            return attempt(info, List.of("--daemon-ping"), n -> { }).stdout().trim();
         } catch (IOException e) {
             return null;
         }
@@ -57,7 +71,7 @@ public final class Client {
         var info = Info.read();
         if (info == null) return false;
         try {
-            attempt(info, List.of("--daemon-stop"));
+            attempt(info, List.of("--daemon-stop"), n -> { });
             Launcher.awaitExit(info, log);
             return true;
         } catch (IOException e) {

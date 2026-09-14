@@ -14,6 +14,21 @@ public final class Fmt {
 
     public static final int SOURCE_WIDTH = 130, DEFAULT_LIMIT = 400;
 
+    /**
+     * Whether the project-wide half of the banner has already been printed in this answer. One call
+     * may now carry several symbols, and the tier line and its warnings describe the INDEX rather than
+     * the symbol — repeating them per symbol would triple the size of a six-symbol answer while saying
+     * nothing new. Symbol-specific lines are always printed; only the shared context is folded.
+     * <p>
+     * A ThreadLocal rather than a static because the daemon serves on a worker thread; it is reset by
+     * {@link #beginAnswer()} at the top of every command so a leaked flag cannot silence the banner of
+     * an unrelated later request.
+     */
+    static final ThreadLocal<Boolean> CONTEXT_SHOWN = ThreadLocal.withInitial(() -> false);
+
+    /** Called once per command invocation, before any answer is rendered. */
+    public static void beginAnswer() { CONTEXT_SHOWN.set(false); }
+
     public static String meta(String subject, Decl target, Path root, Meta m, String countLine) {
         var sb = new StringBuilder();
         sb.append("# ").append(subject);
@@ -21,7 +36,29 @@ public final class Fmt {
         sb.append('\n');
         if (target != null)
             sb.append("# declared: ").append(Src.abs(root, target.file())).append(':').append(target.line()).append('\n');
+        if (CONTEXT_SHOWN.get()) {
+            sb.append("# ").append(countLine).append('\n');
+            return sb.toString();
+        }
         sb.append("# ").append(countLine).append("  -  ").append(m.line()).append('\n');
+        sb.append(warnings(m));
+        CONTEXT_SHOWN.set(true);
+        return sb.toString();
+    }
+
+    /**
+     * The project-wide context on its own, for the answers that do not go through {@link #meta} —
+     * chiefly the "no symbol matched" reply, which must fold the same way when it is one line of a
+     * many-symbol answer rather than the whole of a single-symbol one.
+     */
+    public static String context(Meta m) {
+        if (CONTEXT_SHOWN.get()) return "";
+        CONTEXT_SHOWN.set(true);
+        return "# " + m.line() + '\n' + warnings(m);
+    }
+
+    static String warnings(Meta m) {
+        var sb = new StringBuilder();
         for (var w : m.warnings()) sb.append("# ! ").append(w).append('\n');
         return sb.toString();
     }

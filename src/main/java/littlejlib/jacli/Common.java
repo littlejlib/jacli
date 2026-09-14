@@ -93,18 +93,21 @@ public final class Common {
             System.out.print(text);
             return;
         }
+        var dest = littlejlib.jacli.proj.Cwd.resolve(out);
         try {
-            if (out.getParent() != null) Files.createDirectories(out.getParent());
-            Files.writeString(out, text, StandardCharsets.UTF_8);
-            System.out.println("# written to " + out.toAbsolutePath() + "  (" + text.length() + " bytes, "
+            if (dest.getParent() != null) Files.createDirectories(dest.getParent());
+            Files.writeString(dest, text, StandardCharsets.UTF_8);
+            System.out.println("# written to " + dest + "  (" + text.length() + " bytes, "
                     + text.lines().count() + " lines)");
         } catch (IOException e) {
-            System.err.println("jacli: could not write " + out + ": " + e.getMessage());
+            System.err.println("jacli: could not write " + dest + ": " + e.getMessage());
             System.out.print(text);
         }
     }
 
-    public Path where() { return project != null ? project : littlejlib.jacli.proj.Cwd.get(); }
+    public Path where() {
+        return project != null ? littlejlib.jacli.proj.Cwd.resolve(project) : littlejlib.jacli.proj.Cwd.get();
+    }
 
     public Opts opts() {
         return Opts.defaults().withLimit(limit).withDepth(depth).withKinds(Set.copyOf(kinds))
@@ -133,7 +136,7 @@ public final class Common {
         if (scope != null) index.groupRoots(scope).forEach(r -> {
             if (!roots.contains(r)) roots.add(r);
         });
-        with.forEach(r -> {
+        with.stream().map(littlejlib.jacli.proj.Cwd::resolve).forEach(r -> {
             if (!roots.contains(r)) roots.add(r);
         });
         return roots;

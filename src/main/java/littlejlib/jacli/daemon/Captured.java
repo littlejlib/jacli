@@ -24,6 +24,10 @@ public final class Captured {
     public static volatile boolean verbose;
 
     public static Response run(String cwd, List<String> args) {
+        return run(cwd, args, note -> { });
+    }
+
+    public static Response run(String cwd, List<String> args, Consumer<String> onNote) {
         var out = new ByteArrayOutputStream();
         var err = new ByteArrayOutputStream();
         var realOut = System.out;
@@ -34,6 +38,11 @@ public final class Captured {
             System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
             littlejlib.jacli.proj.Cwd.set(Path.of(cwd));
             verbose = args.contains("-v") || args.contains("--verbose");
+            /* Worker threads are pooled and the banner guard is a ThreadLocal, so a request that
+             * inherited a set flag from the previous one on this thread would print no tier line and
+             * no warnings at all - the single failure mode this tool must never have. */
+            littlejlib.jacli.query.Fmt.beginAnswer();
+            littlejlib.jacli.core.Progress.sink(onNote);
             littlejlib.jacli.proj.Builds.prefer(null);
             var exit = JacliCli.commandLine().execute(args.toArray(String[]::new));
             return new Response(exit, Build.STAMP, out.toString(StandardCharsets.UTF_8),
@@ -46,6 +55,7 @@ public final class Captured {
             System.setOut(realOut);
             System.setErr(realErr);
             verbose = false;
+            littlejlib.jacli.core.Progress.sink(null);
             littlejlib.jacli.proj.Builds.prefer(null);
         }
     }

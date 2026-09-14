@@ -77,6 +77,13 @@ public final class ProjectIndex {
                     return store(vouched, row, true, "");
             }
         }
+        /* Announced BEFORE Projects.open, because resolving a cold maven classpath is itself seconds of
+         * the wait and happens before there is a file count to report. Cheap to decide: findRoot walks
+         * up for a build file and the lookup is one indexed row. */
+        var root = Projects.findRoot(where);
+        if (Counts.project(db, Home.token(root)) == null)
+            littlejlib.jacli.core.Progress.note("first call in " + root
+                    + " - resolving its build and indexing it. Calls after this one are ~0.3s.");
         var project = Projects.open(where, includeTests, false, log);
         if (project.javaFiles().isEmpty())
             throw new IllegalStateException("no java sources found under " + project.root()
@@ -105,6 +112,7 @@ public final class ProjectIndex {
 
     Store full(JavaProject project, Map<String, FileStamp> stamps, Consumer<String> log, String why) {
         log.accept("indexing " + project.fileCount() + " files (" + why + ")");
+        littlejlib.jacli.core.Progress.note("compiling " + project.fileCount() + " java files (" + why + ")");
         var t0 = System.nanoTime();
         var analysis = analyzer(project).analyze(project.javaFiles());
         Indexer.indexAll(db, project, analysis, (System.nanoTime() - t0) / 1_000_000, stamps);

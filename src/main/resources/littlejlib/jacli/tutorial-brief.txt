@@ -1,5 +1,24 @@
 jacli (jack-lee) - java assist cli. Compiler-accurate code navigation.
 
+INSTEAD OF - if you were about to type the command on the left, type the one on the right
+  javap -cp foo.jar com.x.Type       jacli api  -T <groupId:artifactId:version> com.x.Type
+  unzip foo.jar && javap ...         jacli api  -T <g:a:v> --name <what you are hunting for>
+  javap -c   (a body, a constant)    jacli src  -T <g:a:v> 'com.x.Type#member'   real source, decompiled
+  javap -p   (private members)       jacli api  -T <g:a:v> com.x.Type --private
+  grep -n 'void doThing' *.java      jacli def  doThing        then jacli src doThing for the body
+  grep -n X file.java && sed -n a,bp jacli src  'Type#member'  exact span, one call, no line arithmetic
+  grep -rn 'new Foo('                jacli refs Foo --kind NEW
+  grep -rn 'implements Bar'          jacli impls Bar           finds INDIRECT ones a grep cannot
+  grep for a name before renaming    jacli callers 'Type#m'    the call graph, not the spelling
+  reading up a file for its method   jacli at   file.java:1183
+  javap -v  (constant pool, bytecode)  keep javap. That is the one thing this does not do.
+  Non-java files, log files, string literals, comments, poms: keep grep. Those are text, not symbols.
+
+SEVERAL AT ONCE - the reason to use this over a grep alternation
+  jacli def  ChatPoster OAuthPoster YtAuth          one index load, three answers
+  jacli refs ChatPoster OAuthPoster                 what `grep -E 'ChatPoster|OAuthPoster'` was for
+  jacli api  --name 'post|reply|send'               alternation, glob (get*Name) and ~regex all work
+
 WHERE ARE THEY (you don't know what projects exist yet)
   jacli discover [<dir>]   project roots under a directory, reading/indexing nothing; --as-scope <name> prints the scope command
 
@@ -11,6 +30,11 @@ WHAT EXISTS (you don't know the name yet)
 WHAT IS IT (you have a name)
   jacli def     <symbol>   declaration, signature, javadoc, use counts
   jacli src     <symbol>   its source, sliced from the file - walk a stack trace frame by frame
+
+WHERE AM I (you have a position, not a name - a grep hit, a stack frame, a compiler error)
+  jacli at      <file:line>   the declaration containing that line, and what it references there
+  jacli at  A.java:41 B.java:212 C.java:1300    A WHOLE STACK TRACE IN ONE CALL - every frame's
+                           enclosing method and the symbols it touches there. Ask this before reading the files.
 
 HOW IS IT USED
   jacli refs    <symbol>   every use, resolved: call vs declaration vs comment, right overload
@@ -42,15 +66,23 @@ DEPENDENCIES (no compilation; poms only on maven)
   jacli cache --repair            if a verb says "index rows could not be read" - rebuilds structures, reindexes nothing. --reindex does NOT fix that.
   -p at a directory that CONTAINS projects rather than being one is refused, with the roots listed. `jacli projects` flags any such entry already indexed.
 
-A LIBRARY YOU HAVE NOT OPENED
+A DEPENDENCY / A JAR IN ~/.m2 / A LIBRARY YOU HAVE NOT OPENED  -  this is the javap replacement
   jacli tree -T io.github.luvml:luvs:2.0        coordinates from ~/.m2 or the gradle cache, a git URL, or a dir
   jacli api  -T info.picocli:picocli:4.7.7 --name Option
-  Sources jar if present, else the jar's class files. Read on demand, never indexed.
+  jacli src  -T com.arcadedb:arcadedb-engine:26.7.3 'com.arcadedb.database.DatabaseFactory#open'
+  Sources jar if present, else the jar's class files; a body is decompiled on request and labelled.
+  Works the same for YOUR OWN artifacts. Prefer -T over hunting the jar in ~/.m2 and unzipping it.
+  Do not reach for javap here: it needs a classpath you have to build, it cannot show a body without
+  bytecode, and it has no idea which overload you meant.
 
 Symbol: Type | pkg.Type | Type#member | 'Type#method(int,String)' | pkg.Type.method (stack-trace form)
+        Any verb above takes SEVERAL symbols; they share one index load.
 Works on symbols declared in a DEPENDENCY too:  jacli refs luvx.Frag_I
-Filters: --kind CALL,EXTENDS,...  --overrides  --name <substr> (api)  --doc
+Filters: --kind CALL,EXTENDS,...  --overrides  --name 'a|b' or 'get*X' or '~regex' (api)  --doc
 Exit:   0 found - 1 nothing found - 2 usage - 3 ambiguous (candidates listed) - 4 not indexed
         5 nothing found BUT the index is degraded, so absence is not established
 
-Run `jacli` with no arguments for the full tutorial, or `jacli <verb> --help` for one verb.
+Cost: the FIRST call in a project resolves its build and compiles it - tens of seconds on a big one,
+and it says so on stderr while it works. Every call after that is ~0.3s. Paying it once is the deal.
+
+Run `jacli tutorial` for the full text, or `jacli <verb> --help` for one verb.

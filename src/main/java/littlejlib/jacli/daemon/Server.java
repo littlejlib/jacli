@@ -87,7 +87,7 @@ public final class Server {
                 stop();
                 return;
             }
-            var result = execute(request);
+            var result = execute(request, out);
             Protocol.writeResponse(out, result.exit(), Build.STAMP, result.stdout(), result.stderr());
         } catch (IOException e) {
             System.err.println("jacli daemon request failed: " + e);
@@ -96,9 +96,20 @@ public final class Server {
         }
     }
 
-    Response execute(Request request) {
+    /**
+     * The client socket is handed in so progress can be written to it DURING the request, ahead of the
+     * response frame. A note that fails to send must not fail the request it was describing, so the
+     * write is swallowed: the caller then simply waits without commentary, which is where this started.
+     */
+    Response execute(Request request, OutputStream out) {
         synchronized (lock) {
-            return Captured.run(request.cwd(), request.args());
+            return Captured.run(request.cwd(), request.args(), note -> {
+                try {
+                    Protocol.writeNote(out, note);
+                } catch (IOException e) {
+                    // the answer still has to be attempted; a lost note is not a lost reply
+                }
+            });
         }
     }
 

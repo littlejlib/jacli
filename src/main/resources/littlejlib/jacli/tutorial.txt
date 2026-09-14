@@ -3,6 +3,32 @@ jacli (jack-lee) - java assist cli
 Compiler-accurate code navigation over java projects - maven or gradle - for agents.
 ================================================================================
 
+INSTEAD OF
+
+  If you were about to type the command on the left, type the one on the right.
+
+    javap -cp foo.jar com.x.Type      jacli api -T <g:a:v> com.x.Type
+    unzip foo.jar && javap ...        jacli api -T <g:a:v> --name <what you want>
+    javap -c  (a body, a constant)    jacli src -T <g:a:v> 'com.x.Type#member'
+    javap -p  (private members)       jacli api -T <g:a:v> com.x.Type --private
+    grep -n 'void doThing' *.java     jacli def doThing
+    grep -n X f.java && sed -n a,bp   jacli src 'Type#member'
+    grep -rn 'new Foo('               jacli refs Foo --kind NEW
+    grep -rn 'implements Bar'         jacli impls Bar
+    grep a name before renaming it    jacli callers 'Type#member'
+    reading up a file for its method  jacli at file.java:1183
+
+  The -T form works for YOUR OWN artifacts as much as for third-party ones. If the
+  source happens to be on this machine you can point at the directory instead, but
+  you do not have to go looking for it, and you never have to unzip anything.
+
+  KEEP javap for the constant pool, annotation retention and actual bytecode -
+  `javap -v`. That is the one thing here that has no answer.
+
+  KEEP grep for text: string literals, comments, poms, fxml, resources, logs, build
+  output, and any non-java file. Those are text, and this tool indexes symbols.
+  Under about 150 lines, just read the file - two calls here cost more than it does.
+
 THE SHAPE OF IT
 
   jacli uses the real javac compiler, so it answers by resolution rather than by
@@ -10,12 +36,22 @@ THE SHAPE OF IT
   it picks the right overload, and it follows inheritance across project
   boundaries.
 
-  Four question shapes, four groups of verbs:
+  Five question shapes, five groups of verbs:
 
     WHERE ARE THEY?   discover                 you don't know what projects exist yet
     WHAT EXISTS?      tree  api                you don't know the name yet
     WHAT IS IT?       def  src                 you have a name, you want the thing
+    WHERE AM I?       at                       you have a file and a line, not a name
     HOW IS IT USED?   refs  callers  callees  impls  unused
+
+  Every verb that takes a symbol takes SEVERAL, answered against one index load:
+
+    jacli def ChatPoster OAuthPoster YtAuth
+    jacli refs ChatPoster OAuthPoster
+
+  That is the shape a grep alternation was reaching for, and it is why asking one
+  symbol at a time used to lose to `grep -E 'A|B|C'` however much more accurate it
+  was. It no longer has to.
 
   A worked flow, every call under a second once the project is indexed:
 
@@ -99,7 +135,8 @@ WHAT EXISTS - tree, api
     public static CssPropertyFrag flex_direction(java.lang.CharSequence value)
 
 
-A LIBRARY YOU HAVE NOT OPENED - the -T target
+A DEPENDENCY, A JAR IN ~/.m2, A LIBRARY YOU HAVE NOT OPENED - the -T target
+                                                            - this is the javap replacement
 
   The verbs above work on the project you are in. -T points them at something else
   entirely, which is the moment an API surface is worth most: a dependency you have
@@ -158,6 +195,36 @@ WHAT IS IT - def, src
 
     jacli src luvml.o.HtmlRenderer.renderElement
     jacli src luvml.o.Out_A.nL
+
+
+WHERE AM I - at
+
+  Every verb above starts from a symbol. You usually start from a POSITION: a grep
+  hit, a stack frame, a compiler error, a line in a diff. `at` converts one into
+  the other, so the rest of the tool becomes reachable from where you actually are.
+
+    jacli at src/main/java/x/ChatTool.java:1183   the declaration containing it
+    jacli at ChatTool.java:1183                   bare file name is enough
+    jacli at x/ChatTool.java:1183:22              a column is accepted and ignored
+    jacli at ChatTool.java                        no line: what the file declares
+
+  A STACK TRACE IS SEVERAL POSITIONS, SO PASS THEM ALL AT ONCE. One call, one index
+  load, every frame answered:
+
+    jacli at Stage7.java:1300 Pipeline.java:43 Bootstrap.java:62 Main.java:10
+
+  That is the whole trace resolved to its enclosing methods and the symbols each one
+  touches, before a single file has been opened. Walking the frames one call at a time
+  costs a round trip per frame and tells you no more.
+
+  It reports the innermost declaration spanning the line, then every enclosing one
+  outwards, then the symbols referenced on and around that line WITH the key each
+  resolved to - so the answer to "what is this call, actually" is in the output
+  rather than something to work out. Each is a spec ready for another verb, and the
+  two obvious follow-ups are printed.
+
+  This is what replaces opening a file and reading upwards to find which method a
+  line belongs to.
 
 
 HOW IS IT USED - refs, callers, callees, impls, unused

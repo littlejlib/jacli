@@ -9,14 +9,17 @@ import picocli.CommandLine.Option;
 @Command(name = "jacli", mixinStandardHelpOptions = true, version = "jacli 0.1",
         synopsisSubcommandLabel = "<verb>",
         description = "jacli (jack-lee) - java assist cli. Compiler-accurate code navigation over java/maven projects.",
-        subcommands = { TreeCmd.class, ApiCmd.class, RefsCmd.class, DefCmd.class, SrcCmd.class,
+        subcommands = { TreeCmd.class, ApiCmd.class, RefsCmd.class, DefCmd.class, SrcCmd.class, AtCmd.class,
                 CallersCmd.class, CalleesCmd.class, ImplsCmd.class, UnusedCmd.class, DepsCmd.class,
                 ReleasableCmd.class, DiscoverCmd.class, ScopeCmd.class, IndexCmd.class, ProjectsCmd.class,
-                CacheCmd.class, StatusCmd.class, DaemonCmd.class })
+                CacheCmd.class, StatusCmd.class, DaemonCmd.class, TutorialCmd.class })
 public final class JacliCli implements Callable<Integer> {
 
-    @Option(names = "--brief", description = "Print the short help instead of the tutorial.")
+    @Option(names = "--brief", description = "Print the short help. This is now the default; kept so older invocations still work.")
     boolean brief;
+
+    @Option(names = "--full", description = "Print the full tutorial, the same text as jacli tutorial.")
+    boolean full;
 
     public static void main(String[] args) {
         utf8Out();
@@ -35,8 +38,22 @@ public final class JacliCli implements Callable<Integer> {
         }
     }
 
+    /**
+     * In-process runs need the same progress the daemon sends over the wire — {@code --direct} and the
+     * fallback when no daemon can be reached are exactly the slow paths, so they are the last place
+     * that should be silent. Here the sink is simply stderr, with no framing in between.
+     */
     static int runHere(String[] args) {
-        return commandLine().execute(args);
+        littlejlib.jacli.query.Fmt.beginAnswer();
+        littlejlib.jacli.core.Progress.sink(note -> {
+            System.err.println("jacli: " + note);
+            System.err.flush();
+        });
+        try {
+            return commandLine().execute(args);
+        } finally {
+            littlejlib.jacli.core.Progress.sink(null);
+        }
     }
 
     /**
@@ -92,7 +109,7 @@ public final class JacliCli implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        System.out.print(brief ? Tutorial.brief() : Tutorial.full());
+        System.out.print(full && !brief ? Tutorial.full() : Tutorial.brief());
         return 0;
     }
 }

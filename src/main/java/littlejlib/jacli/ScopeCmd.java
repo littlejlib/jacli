@@ -93,17 +93,38 @@ public final class ScopeCmd implements Callable<Integer> {
      * A path that does not exist is a different answer from one that exists but has not been indexed.
      * Reporting the second for the first tells the reader to run a verb in a directory they cannot cd
      * into, and hides the real cause, which on Windows is usually a backslash eaten by the shell.
+     * <p>
+     * NOT BEING INDEXED YET IS NOT AN ERROR. It used to be: declaring a four-project family meant four
+     * {@code index} calls and then the {@code scope} call, five commands before the first answer, and
+     * the refusal arrived at the exact moment the caller was doing the setup the tool asked for. A
+     * directory that exists and holds a project is simply indexed here and then added, because that is
+     * what the caller was about to be told to do anyway.
      */
-    void set(com.arcadedb.database.Database db, Path dir, String group) {
+    void set(com.arcadedb.database.Database db, Path raw, String group) {
+        var dir = Cwd.resolve(raw);
         if (group != null && !Files.exists(dir))
-            throw new IllegalArgumentException("no such path: " + dir.toAbsolutePath()
+            throw new IllegalArgumentException("no such path: " + dir
                     + " - that is how it resolved, so compare it with what you typed");
         var root = Projects.findRoot(dir);
         var pid = Home.token(root);
-        if (Counts.project(db, pid) == null)
-            throw new IllegalStateException(root + " is not indexed yet - run a verb in it, or jacli index -p " + root);
+        if (Counts.project(db, pid) == null) {
+            if (group == null) {
+                System.out.println("# " + root + " is not indexed, so it was in no scope; nothing to remove");
+                return;
+            }
+            index(root);
+        }
         db.transaction(() -> Upsert.upsert(db, JProject.TYPEDEF)
                 .key(JProject.$projectId, pid).set(JProject.$scopeGroup, group).save());
+    }
+
+    /** Index a member being added to a scope, reporting it, since it is the slow part of the call. */
+    void index(Path root) {
+        System.out.println("# indexing " + root + " so it can join the scope");
+        var shared = ServerContext.index();
+        var index = shared != null ? shared : new ProjectIndex(Db.get().db());
+        var store = index.ensure(root, common.tests, false, common.log());
+        System.out.println("#   " + store.meta().line());
     }
 
     /**

@@ -14,6 +14,11 @@ public final class Protocol {
     private Protocol() { }
 
     public static final String MAGIC = "JACLI1";
+    /**
+     * A progress note, sent while the request is still being worked on. Any number may precede the one
+     * response frame, so a reader must loop rather than assume the first frame is the answer.
+     */
+    public static final String NOTE = "JACLI1N";
     public static final char SEP = '\0';
     public static final int MAX_FRAME = 64 << 20;
 
@@ -46,12 +51,36 @@ public final class Protocol {
         out.flush();
     }
 
+    /** Progress, flushed on its own so it reaches the caller while the work is still running. */
+    public static void writeNote(OutputStream out, String text) throws IOException {
+        var payload = text.getBytes(StandardCharsets.UTF_8);
+        out.write((NOTE + " " + payload.length + "\n").getBytes(StandardCharsets.UTF_8));
+        out.write(payload);
+        out.flush();
+    }
+
     public static Response readResponse(InputStream in) throws IOException {
-        var head = readLine(in).split(" ");
-        if (head.length < 5 || !MAGIC.equals(head[0])) throw new IOException("bad response frame");
-        var out = new String(readExactly(in, size(head[3])), StandardCharsets.UTF_8);
-        var err = new String(readExactly(in, size(head[4])), StandardCharsets.UTF_8);
-        return new Response(Integer.parseInt(head[1]), head[2], out, err);
+        return readResponse(in, note -> { });
+    }
+
+    /**
+     * Reads frames until the response arrives, handing every note that precedes it to {@code onNote}
+     * as it lands. The note magic is checked first and is a strict prefix of nothing else, so an older
+     * daemon that never sends one is read exactly as before.
+     */
+    public static Response readResponse(InputStream in, Consumer<String> onNote) throws IOException {
+        while (true) {
+            var head = readLine(in).split(" ");
+            if (NOTE.equals(head[0])) {
+                if (head.length < 2) throw new IOException("bad note frame");
+                onNote.accept(new String(readExactly(in, size(head[1])), StandardCharsets.UTF_8));
+                continue;
+            }
+            if (head.length < 5 || !MAGIC.equals(head[0])) throw new IOException("bad response frame");
+            var out = new String(readExactly(in, size(head[3])), StandardCharsets.UTF_8);
+            var err = new String(readExactly(in, size(head[4])), StandardCharsets.UTF_8);
+            return new Response(Integer.parseInt(head[1]), head[2], out, err);
+        }
     }
 
     static int size(String s) throws IOException {

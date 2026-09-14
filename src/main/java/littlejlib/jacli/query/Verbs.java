@@ -158,7 +158,7 @@ public final class Verbs {
 
     static Answer unknown(Store store, Spec spec, String verb) {
         var m = store.meta();
-        var sb = new StringBuilder("# no symbol matched '" + spec.raw() + "'\n# " + m.line() + '\n');
+        var sb = new StringBuilder("# no symbol matched '" + spec.raw() + "'\n" + Fmt.context(m));
         var near = store.declsByName(spec.searchName());
         if (!near.isEmpty()) {
             sb.append("# declarations named '").append(spec.searchName()).append("' that did not match the spec:\n");
@@ -193,7 +193,6 @@ public final class Verbs {
                     .append("#                               jacli api --name ").append(spec.searchName())
                     .append("   (search declaration names)\n");
         }
-        for (var w : m.warnings()) sb.append("# ! ").append(w).append('\n');
         return m.tier().isExact() ? Answer.nothing(sb.toString()) : Answer.degradedEmpty(sb.toString());
     }
 

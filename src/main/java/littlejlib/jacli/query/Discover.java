@@ -64,6 +64,7 @@ public final class Discover {
         var chain = new LinkedHashSet<String>();
         collectSupers(store, type.key(), chain, 0);
         var seen = new HashSet<String>();
+        var named = NameFilter.of(nameFilter);
         var sb = new StringBuilder(Fmt.meta("api " + type.key() + " --inherited"
                         + (nameFilter == null ? "" : " matching '" + nameFilter + "'"),
                 type, store.root(), store.meta(), Fmt.plural(chain.size(), "type", "types") + " in the hierarchy"));
@@ -72,8 +73,7 @@ public final class Discover {
             var members = store.declsInType(owner).stream()
                     .filter(opts::visible)
                     .filter(d -> !d.kind().isType())
-                    .filter(d -> nameFilter == null || d.name().toLowerCase(Locale.ROOT)
-                            .contains(nameFilter.toLowerCase(Locale.ROOT)))
+                    .filter(d -> named.matches(d.name()))
                     /* An override re-declares an inherited member; show the one nearest the type asked
                      * about, which is the first reached walking outwards. */
                     .filter(d -> seen.add(d.name() + "(" + String.join(",", d.paramTypes()) + ")"))
@@ -106,11 +106,11 @@ public final class Discover {
          * lower-case final segment as a member name — so "luvml.o" was becoming the scope "luvml". */
         var wanted = scope == null ? null : scope.trim();
         var isType = wanted != null && store.allDecls().anyMatch(d -> d.kind().isType() && matchesType(d, wanted));
+        var named = NameFilter.of(nameFilter);
         var hits = store.allDecls()
                 .filter(d -> isType ? ownedBy(d, wanted) : inScope(d, wanted))
                 .filter(d -> isType || d.kind().isType() || nameFilter != null)
-                .filter(d -> nameFilter == null
-                        || d.name().toLowerCase(Locale.ROOT).contains(nameFilter.toLowerCase(Locale.ROOT)))
+                .filter(d -> named.matches(d.name()))
                 .filter(opts::visible)
                 .sorted(Comparator.comparing(Decl::ownerKey, Comparator.nullsFirst(Comparator.naturalOrder()))
                         .thenComparing(Decl::name))
