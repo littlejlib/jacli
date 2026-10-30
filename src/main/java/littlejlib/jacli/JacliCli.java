@@ -12,7 +12,7 @@ import picocli.CommandLine.Option;
         subcommands = { TreeCmd.class, ApiCmd.class, RefsCmd.class, DefCmd.class, SrcCmd.class, AtCmd.class,
                 CallersCmd.class, CalleesCmd.class, ImplsCmd.class, UnusedCmd.class, DepsCmd.class,
                 ReleasableCmd.class, DiscoverCmd.class, ScopeCmd.class, IndexCmd.class, ProjectsCmd.class,
-                CacheCmd.class, StatusCmd.class, DaemonCmd.class, TutorialCmd.class })
+                CacheCmd.class, StatusCmd.class, DaemonCmd.class, TutorialCmd.class, littlejlib.jacli.claude.ClaudeCmd.class })
 public final class JacliCli implements Callable<Integer> {
 
     @Option(names = "--brief", description = "Print the short help. This is now the default; kept so older invocations still work.")
@@ -87,7 +87,7 @@ public final class JacliCli implements Callable<Integer> {
      */
     static boolean runsLocally(List<String> args) {
         if (args.isEmpty() || args.getFirst().startsWith("-")) return true;
-        if ("daemon".equals(args.getFirst())) return true;
+        if ("daemon".equals(args.getFirst()) || "claude".equals(args.getFirst())) return true;
         return args.stream().anyMatch(a -> a.equals("--direct") || a.equals("--syntactic")
                 || a.equals("--help") || a.equals("-h"));
     }

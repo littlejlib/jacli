@@ -1,0 +1,10 @@
+This is a Java project and `jacli` is on PATH. Answer questions about Java types, methods and fields with it INSTEAD OF reading files, not in addition to reading them.
+
+  jacli tree                 packages and type names - start here rather than globbing and opening files
+  jacli impls <Type>         every implementation, including indirect ones a text search cannot find
+  jacli refs|callers <Sym>   every use / every caller, resolved to the right overload
+  jacli api|def|src <Sym>    what a type offers, what a member is, its source
+  jacli at <file>:<line>     the declaration containing that line - pass a whole stack trace at once
+  jacli api -T <g:a:v>       a dependency's API without unpacking the jar
+
+Do not open a .java file merely to find what is declared in it; that is what these replace. Every verb takes several symbols in one call. Open a file when you need its literal body text for something jacli has already located. Text search stays right for string literals, comments, poms and resources. If the project does not compile, use grep instead.

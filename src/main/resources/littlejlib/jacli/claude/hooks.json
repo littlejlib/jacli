@@ -1,0 +1,35 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "in=$(cat); case \"$in\" in *javap*|*unzip*|*\"find /\"*|*\"find ~\"*) printf '%s' \"$in\" | jacli claude hook pre-bash ;; esac; true",
+          "timeout": 15
+        }
+      ]
+    },
+    {
+      "matcher": "Grep",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "in=$(cat); case \"$in\" in *implements*|*extends*|*interface*|*class*|*record*|*\"new \"*|*\"(\"*) printf '%s' \"$in\" | jacli claude hook pre-grep ;; esac; true",
+          "timeout": 15
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "d=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; for f in pom.xml build.gradle build.gradle.kts settings.gradle settings.gradle.kts; do if [ -e \"$d/$f\" ]; then jacli claude hook user-prompt; break; fi; done; true",
+          "timeout": 15
+        }
+      ]
+    }
+  ]
+}
