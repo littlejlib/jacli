@@ -68,6 +68,7 @@ $notesFile = Join-Path $out '..\release-notes.md'
 [IO.File]::WriteAllText($notesFile, $notes)
 
 $assets = Get-ChildItem $out -File | ForEach-Object { $_.FullName }
+$ErrorActionPreference = 'Continue'   # gh prints its account notice on stderr; only its exit code counts
 & $gh release create $tag @assets --repo $repo --title "jacli $version" --notes-file $notesFile --target (Sha HEAD) --latest
 if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
 
