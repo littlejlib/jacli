@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.littlejlib</groupId>
     <artifactId>littlejlib-jacli</artifactId>
-    <version>0.2.1</version>
+    <version>0.2.2</version>
     <packaging>jar</packaging>
 
     <description>jacli - java assist cli. Semantic code navigation (find usages, call hierarchy, type queries) over java/maven projects for AI coding agents, backed by an indexing daemon.</description>

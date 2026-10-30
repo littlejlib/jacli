@@ -6,6 +6,27 @@ Maven and gradle are both first class. Which one a directory uses is detected, r
 
 Built for coding agents. Default `jacli` with no arguments prints a full tutorial, because a CLI has no prompt attached the way an MCP server does — that help text is the only documentation an agent ever reads.
 
+## Quick start
+
+On Windows, in cmd or PowerShell:
+
+```
+curl.exe -fLo jacli.exe https://github.com/littlejlib/jacli/releases/latest/download/jacli.exe
+.\jacli.exe install
+jacli claude install
+```
+
+The first line downloads one small exe, the second installs it for your user (no administrator rights, on your PATH), and the third puts jacli's agent prompt and hooks in front of Claude Code, so a coding agent asks the compiler instead of opening files. Then, in any Java project:
+
+```
+jacli tree                  what exists
+jacli impls Out_I           every implementation, including the ones that never say "implements"
+jacli callers 'Foo#bar'     who calls it, resolved to the right overload
+jacli update                move to the newest release
+```
+
+jacli needs Java 25; if the machine has none, the exe offers to download it on first run. Details are under [Install](#install).
+
 ## Verbs
 
 Three question shapes.
@@ -108,20 +129,7 @@ Every one of them has been checked to fail when its fix is reverted. A regressio
 
 ## Install
 
-On Windows, in cmd or PowerShell (`curl.exe` ships with Windows 10 and 11):
-
-```
-curl.exe -fLo jacli.exe https://github.com/littlejlib/jacli/releases/latest/download/jacli.exe
-.\jacli.exe install
-```
-
-Then, once, to put jacli in front of Claude Code (its agent prompt and hooks, embedded in the jar):
-
-```
-jacli claude install
-```
-
-`install` copies `jacli.exe` and `jacli-daemon.exe` to `%LOCALAPPDATA%\Programs\jacli` and puts that folder first on your user PATH; no administrator rights, and running it again repairs the install (`--no-path` leaves PATH alone, `--dir <folder>` installs elsewhere). The exes are [jr](https://github.com/jarrunner/jr) launchers: on first run each fetches the release's jar (checked against the SHA-256 baked into it) and, if there is no Java 25 on the machine, offers to download one. The JDK 25 AOT cache it builds is what keeps a warm call under a second.
+The [Quick start](#quick-start) lines are the whole install (`curl.exe` ships with Windows 10 and 11; `jacli claude install` writes the agent prompt and hooks embedded in the jar). What they do: `install` copies `jacli.exe` and `jacli-daemon.exe` to `%LOCALAPPDATA%\Programs\jacli` and puts that folder first on your user PATH; no administrator rights, and running it again repairs the install (`--no-path` leaves PATH alone, `--dir <folder>` installs elsewhere). The exes are [jr](https://github.com/jarrunner/jr) launchers: on first run each fetches the release's jar (checked against the SHA-256 baked into it) and, if there is no Java 25 on the machine, offers to download one. The JDK 25 AOT cache it builds is what keeps a warm call under a second.
 
 ```
 jacli update            move all three exes to the newest release (stops the daemon first)
