@@ -8,12 +8,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ReleaseTest {
 
-    static final String SUMS = "aa11  jacli-daemon.exe\n" + "BB22  symbols.exe\n" + "cc33  jacli.jar\n";
+    static final String SUMS = "aa11  jacli-daemon.exe\n" + "BB22  jacli.exe\n" + "cc33  jacli.jar\n";
 
     @Test
     void sumOfFindsTheNamedFile() throws IOException {
         assertEquals("aa11", Siblings.sumOf("jacli-daemon.exe", SUMS.getBytes(StandardCharsets.UTF_8)));
-        assertEquals("bb22", Siblings.sumOf("symbols.exe", SUMS.getBytes(StandardCharsets.UTF_8)), "hex is compared in lower case");
+        assertEquals("bb22", Siblings.sumOf("jacli.exe", SUMS.getBytes(StandardCharsets.UTF_8)), "hex is compared in lower case");
         assertThrows(IOException.class, () -> Siblings.sumOf("missing.exe", SUMS.getBytes(StandardCharsets.UTF_8)));
     }
 

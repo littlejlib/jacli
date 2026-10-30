@@ -171,8 +171,7 @@ A DEPENDENCY, A JAR IN ~/.m2, A LIBRARY YOU HAVE NOT OPENED - the -T target
   are what -T is for. --private includes non-public members; --code prints each
   declaration's source alongside its signature.
 
-  This replaces symbols.exe, whose whole surface now lives here. The old name still
-  works and points at jacli. What was `symbols gen -b <branch> -d -a -c -o` is
+  This replaces symbols.exe, whose whole surface now lives here. What was `symbols gen -b <branch> -d -a -c -o` is
   `jacli api <scope> --doc --private --code -o <file>`, and `symbols cache --clear`
   is `jacli cache --clear`.
 

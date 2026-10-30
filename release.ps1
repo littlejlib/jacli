@@ -4,9 +4,9 @@
 #     .\release.ps1 -DryRun          build and checksum only; show what would be published
 #     .\release.ps1 -Changes f.md    put f.md (what changed in this release) at the top of the release notes
 #
-# One release carries everything an installed jacli needs: jacli.exe, jacli-daemon.exe, symbols.exe, the shaded
+# One release carries everything an installed jacli needs: jacli.exe, jacli-daemon.exe, the shaded
 # jar they all fetch (jacli.jar, from the same release), one update file per exe (jacli.update.json,
-# jacli-daemon.update.json, symbols.update.json, each read by that exe's -Xjr:update at releases/latest/download/),
+# jacli-daemon.update.json, each read by that exe's -Xjr:update at releases/latest/download/),
 # version.txt and SHA256SUMS. The exes are built by jr-maven-plugin (the jrexe profile in pom.xml) with the sha256 of
 # exactly that jar baked in; each exe writes its own folder target\jr\release-<name>, gathered here into
 # target\jr\release. The asset NAMES never change between releases, only their contents.
@@ -53,8 +53,8 @@ $sums = Get-ChildItem $out -File | Where-Object { $_.Name -ne 'SHA256SUMS' -and 
     ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
 [IO.File]::WriteAllText((Join-Path $out 'SHA256SUMS'), (($sums -join "`n") + "`n"))
 
-foreach ($f in @('jacli.exe', 'jacli-daemon.exe', 'symbols.exe', 'jacli.jar', 'version.txt', 'SHA256SUMS',
-                 'jacli.update.json', 'jacli-daemon.update.json', 'symbols.update.json')) {
+foreach ($f in @('jacli.exe', 'jacli-daemon.exe', 'jacli.jar', 'version.txt', 'SHA256SUMS',
+                 'jacli.update.json', 'jacli-daemon.update.json')) {
     if (-not (Test-Path (Join-Path $out $f))) { throw "the release folder has no $f - see the jr:exe output above" }
 }
 Get-ChildItem $out | ForEach-Object { Write-Host ('  {0,-28} {1,7:N1} MB' -f $_.Name, ($_.Length / 1MB)) }
@@ -82,7 +82,7 @@ foreach ($line in $sums) {
     Remove-Item $tmp -ErrorAction SilentlyContinue
     if ($got -ne $hash) { Write-Host "  BAD  $name ($got)"; $bad++ } else { Write-Host "  ok   $name" }
 }
-foreach ($name in @('jacli.update.json', 'jacli-daemon.update.json', 'symbols.update.json', 'SHA256SUMS')) {
+foreach ($name in @('jacli.update.json', 'jacli-daemon.update.json', 'SHA256SUMS')) {
     & curl.exe -fsSL --retry 5 --retry-all-errors -o NUL "$download/$name"
     if ($LASTEXITCODE -ne 0) { Write-Host "  BAD  latest/download/$name"; $bad++ } else { Write-Host "  ok   latest/download/$name" }
 }

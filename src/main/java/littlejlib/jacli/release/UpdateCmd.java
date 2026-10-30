@@ -8,7 +8,7 @@ import picocli.CommandLine.Option;
 
 import static littlejlib.jacli.release.ExeUpdate.*;
 
-@Command(name = "update", description = "Move jacli, jacli-daemon and symbols to the newest release.",
+@Command(name = "update", description = "Move jacli and jacli-daemon to the newest release.",
         footer = {
             "",
             "Stops the daemon first (the index on disk is kept; the next verb starts the new one).",

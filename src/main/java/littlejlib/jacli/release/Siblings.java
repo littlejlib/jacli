@@ -4,10 +4,10 @@ import module java.base;
 import jarrunner.jr.apputils.JrApp;
 import littlejlib.jacli.daemon.Launcher;
 
-/** The exes that travel with jacli.exe: the daemon (its own process name and memory flags) and the old symbols name. */
+/** The exe that travels with jacli.exe: the daemon (its own process name and memory flags). */
 public final class Siblings {
 
-    public static final List<String> NAMES = List.of(Launcher.DAEMON_EXE, "symbols.exe");
+    public static final List<String> NAMES = List.of(Launcher.DAEMON_EXE);
 
     static final String RELEASES = "https://github.com/littlejlib/jacli/releases/download/v";
 

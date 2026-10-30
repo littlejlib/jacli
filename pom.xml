@@ -234,16 +234,6 @@
                                     </vmArgs>
                                 </configuration>
                             </execution>
-                            <execution>
-                                <id>symbols</id>
-                                <goals><goal>exe</goal></goals>
-                                <configuration>
-                                    <name>symbols</name>
-                                    <appId>io.github.littlejlib:symbols</appId>
-                                    <updateUrl>https://github.com/littlejlib/jacli/releases/latest/download/symbols.update.json</updateUrl>
-                                    <releaseDirectory>${project.build.directory}/jr/release-symbols</releaseDirectory>
-                                </configuration>
-                            </execution>
                         </executions>
                     </plugin>
                 </plugins>

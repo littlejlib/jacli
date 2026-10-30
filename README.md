@@ -121,7 +121,7 @@ Then, once, to put jacli in front of Claude Code (its agent prompt and hooks, em
 jacli claude install
 ```
 
-`install` copies `jacli.exe`, `jacli-daemon.exe` and `symbols.exe` to `%LOCALAPPDATA%\Programs\jacli` and puts that folder first on your user PATH; no administrator rights, and running it again repairs the install (`--no-path` leaves PATH alone, `--dir <folder>` installs elsewhere). The exes are [jr](https://github.com/jarrunner/jr) launchers: on first run each fetches the release's jar (checked against the SHA-256 baked into it) and, if there is no Java 25 on the machine, offers to download one. The JDK 25 AOT cache it builds is what keeps a warm call under a second.
+`install` copies `jacli.exe` and `jacli-daemon.exe` to `%LOCALAPPDATA%\Programs\jacli` and puts that folder first on your user PATH; no administrator rights, and running it again repairs the install (`--no-path` leaves PATH alone, `--dir <folder>` installs elsewhere). The exes are [jr](https://github.com/jarrunner/jr) launchers: on first run each fetches the release's jar (checked against the SHA-256 baked into it) and, if there is no Java 25 on the machine, offers to download one. The JDK 25 AOT cache it builds is what keeps a warm call under a second.
 
 ```
 jacli update            move all three exes to the newest release (stops the daemon first)

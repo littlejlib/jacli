@@ -7,7 +7,7 @@ import littlejlib.jacli.daemon.Client;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "install", description = "Install this jacli.exe, with jacli-daemon.exe and symbols.exe, for this user.",
+@Command(name = "install", description = "Install this jacli.exe, with jacli-daemon.exe, for this user.",
         footer = {
             "",
             "  curl.exe -fLo jacli.exe https://github.com/littlejlib/jacli/releases/latest/download/jacli.exe",
