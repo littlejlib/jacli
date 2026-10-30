@@ -124,7 +124,7 @@ public final class Common {
         if (direct || syntactic) return Engine.direct(where(), tests, syntactic, log());
         var shared = littlejlib.jacli.index.ServerContext.index();
         var index = shared != null ? shared
-                : new littlejlib.jacli.index.ProjectIndex(littlejlib.jacli.index.Db.get().db());
+                : new littlejlib.jacli.index.ProjectIndex();
         var roots = scopeRoots(index);
         if (roots.size() > 1) return index.ensureScope(roots, scope != null ? scope : "ad-hoc", tests, reindex, log());
         return index.ensure(where(), tests, reindex, log());
@@ -155,11 +155,5 @@ public final class Common {
         var size = shared.groupRoots(group).size();
         return "# this project is part of scope '" + group + "' (" + size + " projects); "
                 + "add --scope " + group + " to answer across all of them\n";
-    }
-
-    /** True when this process owns the database and must therefore close it when the command ends. */
-    public boolean ownsDb() {
-        return target == null && !direct && !syntactic
-                && littlejlib.jacli.index.ServerContext.index() == null;
     }
 }

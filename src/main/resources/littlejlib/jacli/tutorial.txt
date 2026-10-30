@@ -473,17 +473,8 @@ HOW MUCH TO TRUST AN ANSWER - READ THE TIER
   Exit 5 means nothing found AND the index is degraded, which is different from
   exit 1, nothing found on a clean index. Never read a 5 as proof of absence.
 
-  One warning is worth recognising on sight:
-
-    jacli: N index rows could not be read - ... Repair with: jacli cache --repair
-
-  That is the index holding entries for records that are gone. Answers still come
-  back and are still exact as far as they go, but they are SHORT - reference counts
-  especially, which can read as 0 for a symbol used thousands of times. `--reindex`
-  does not clear it, and that is not a bug in the advice: an entry with no record
-  behind it cannot be found by a delete, so rewriting the rows leaves it exactly
-  where it was. `cache --repair` rebuilds the index structures from the records and
-  reindexes nothing.
+  Each project's index is its own file, so a bad one costs only that project: it is
+  rebuilt on the next query.
 
   jacli still answers when a project does not compile - mid-refactor is exactly
   when you search hardest - and tells you what the answer is worth.

@@ -77,8 +77,6 @@ public final class ReleasableCmd implements Callable<Integer> {
         } catch (RuntimeException e) {
             System.err.println("jacli: " + e.getMessage());
             return littlejlib.jacli.query.Answer.NOT_INDEXED;
-        } finally {
-            if (common.ownsDb()) littlejlib.jacli.index.Db.shutdown();
         }
     }
 

@@ -24,3 +24,6 @@ credentials.json
 *.p12
 *.log
 *.jar
+
+# Editor and hand backups
+*.bak

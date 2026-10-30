@@ -4,8 +4,7 @@ import module java.base;
 import littlejlib.jacli.core.Decompiler;
 import littlejlib.jacli.daemon.Client;
 import littlejlib.jacli.proj.*;
-import datapotter.arcadedbhelper.Indexes;
-import datapotter.arcadedbhelper.TypeDef;
+import littlejlib.jacli.index.Catalog;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
@@ -19,10 +18,10 @@ import picocli.CommandLine.Option;
             "  jacli cache --clear classpath     resolved classpaths, and gradle models with them",
             "  jacli cache --clear gradle        just the gradle models (re-asks gradle next time)",
             "  jacli cache --clear decompiled    decompiled bytecode",
-            "  jacli cache --clear index         the whole index (stops the daemon first)",
+            "  jacli cache --clear index         every project's index file (scopes and pins are kept)",
+            "  jacli cache --clear olddb         the database the index used before it became one file per project",
             "  jacli cache --clear all           everything",
             "  jacli cache --forget <dir>        drop ONE project from the index, leaving the rest",
-            "  jacli cache --repair              rebuild index structures from the records, losing nothing",
             "",
             "Nothing here is precious - every entry can be rebuilt from the sources or the repository.",
             "To rebuild one project's index instead of all of them, use --reindex on any verb.",
@@ -43,19 +42,14 @@ public final class CacheCmd implements Callable<Integer> {
             description = "Drop just this project from the index, leaving every other project intact.")
     Path forget;
 
-    @Option(names = "--repair",
-            description = "Rebuild the index structures from the records. Fixes 'index rows could not be read'.")
-    boolean repair;
-
     static final Map<String, String> DIRS = new LinkedHashMap<>(Map.of(
-            "index", "db", "sources", Targets.SRC_CACHE, "git", Targets.GIT_CACHE,
+            "index", "packs", "olddb", "db", "sources", Targets.SRC_CACHE, "git", Targets.GIT_CACHE,
             "classpath", "cp", "gradle", littlejlib.jacli.proj.gradle.Gradle.CACHE,
             "decompiled", Decompiler.CACHE));
 
     @Override
     public Integer call() {
         var out = new StringBuilder();
-        if (repair) return doRepair(out);
         if (forget != null) return doForget(out);
         if (!clear.isEmpty()) return doClear(out);
         out.append("# jacli caches under ").append(Home.dir()).append('\n');
@@ -101,66 +95,32 @@ public final class CacheCmd implements Callable<Integer> {
     }
 
     /**
-     * Drops every index structure and builds it again from the records that are there.
-     * <p>
-     * This is the ONE repair for an index entry whose record has gone. Nothing else clears it: the
-     * entry has no record behind it, so a delete cannot find it and a reindex writes new entries beside
-     * it — a forced reindex of an affected project returns identical skip counts. Nothing indexed is
-     * lost, because every entry is derived from a record that still exists.
-     */
-    int doRepair(StringBuilder out) {
-        var db = littlejlib.jacli.index.Db.get().db();
-        try {
-            var names = littlejlib.jacli.index.Db.typeNames();
-            var before = names.stream().mapToLong(n -> Indexes.orphans(db, n)).sum();
-            out.append("# rebuilding index structures over ").append(names.size())
-                    .append(" types").append(before == 0 ? " (none currently unreadable)"
-                            : " (" + before + " unreadable entries found)").append('\n');
-            var t0 = System.nanoTime();
-            var rebuilt = Indexes.rebuild(db, littlejlib.jacli.index.Db.TYPES.toArray(TypeDef[]::new));
-            var after = names.stream().mapToLong(n -> Indexes.orphans(db, n)).sum();
-            out.append("# ").append(rebuilt).append(" indexes rebuilt in ")
-                    .append((System.nanoTime() - t0) / 1_000_000).append("ms; unreadable entries now ")
-                    .append(after).append('\n');
-            out.append(after == 0 ? "# the index and the records agree again. Nothing was reindexed.\n"
-                    : "# still unreadable, which this cannot explain. Fall back to --clear index.\n");
-            common.emit(out.toString());
-            return after == 0 ? 0 : 1;
-        } finally {
-            if (littlejlib.jacli.index.ServerContext.index() == null) littlejlib.jacli.index.Db.shutdown();
-        }
-    }
-
-    /**
      * Matches on the stored root first, because that is the string {@code jacli projects} printed and so
      * the one the reader will paste back. Resolving through {@link Projects#findRoot} instead would walk
      * up out of the very directory being named whenever a parent happens to carry a pom.
      */
     int doForget(StringBuilder out) {
-        var db = littlejlib.jacli.index.Db.get().db();
-        try {
+        {
             if (!Files.exists(forget))
                 out.append("# ").append(forget.toAbsolutePath()).append(" does not exist; looking it up anyway, "
                         + "since a project whose directory is gone is exactly one worth forgetting\n");
             var target = forget.toAbsolutePath().normalize();
-            var row = littlejlib.jacli.index.Counts.all(db).stream()
+            var row = Catalog.get().all().stream()
                     .filter(p -> p.root() != null && Path.of(p.root()).equals(target)).findFirst()
-                    .orElseGet(() -> littlejlib.jacli.index.Counts.project(db, Home.token(Projects.findRoot(forget))));
+                    .orElseGet(() -> Catalog.get().project(Home.token(Projects.findRoot(forget))));
             if (row == null) {
                 System.err.println("jacli: no indexed project at " + target + " - jacli projects lists what is indexed");
                 return littlejlib.jacli.query.Answer.NOT_INDEXED;
             }
             var shared = littlejlib.jacli.index.ServerContext.index();
             if (shared != null) shared.release(row.projectId());
-            littlejlib.jacli.index.Counts.forget(db, row.projectId());
+            Catalog.get().forget(row.projectId());
             out.append("# forgot ").append(row.coords()).append("  ").append(row.root()).append('\n')
                     .append("# ").append(row.files()).append(" files, ").append(row.declCount())
                     .append(" declarations and ").append(row.refCount()).append(" references dropped. ")
                     .append("Every other project is untouched.\n");
             common.emit(out.toString());
             return 0;
-        } finally {
-            if (littlejlib.jacli.index.ServerContext.index() == null) littlejlib.jacli.index.Db.shutdown();
         }
     }
 

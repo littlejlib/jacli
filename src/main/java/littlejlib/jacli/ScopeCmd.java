@@ -7,7 +7,6 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
-import datapotter.arcadedbhelper.Upsert;
 
 @Command(name = "scope", description = "Declare that several projects belong together, so one query can span them.",
         footer = {
@@ -47,29 +46,26 @@ public final class ScopeCmd implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            var db = Db.get().db();
-            if (suggest) return suggest(db);
-            if (name == null) return list(db);
-            add.forEach(dir -> set(db, dir, name));
-            remove.forEach(dir -> set(db, dir, null));
-            return show(db, name);
+            if (suggest) return suggest();
+            if (name == null) return list();
+            add.forEach(dir -> set(dir, name));
+            remove.forEach(dir -> set(dir, null));
+            return show(name);
         } catch (IllegalArgumentException e) {
             System.err.println("jacli: " + e.getMessage());
             return littlejlib.jacli.query.Answer.USAGE;
         } catch (RuntimeException e) {
             System.err.println("jacli: " + e.getMessage());
             return littlejlib.jacli.query.Answer.NOT_INDEXED;
-        } finally {
-            if (ServerContext.index() == null) Db.shutdown();
         }
     }
 
-    int list(com.arcadedb.database.Database db) {
-        var groups = Counts.groups(db);
+    int list() {
+        var groups = Catalog.get().groups();
         var out = new StringBuilder("# " + littlejlib.jacli.query.Fmt.plural(groups.size(), "declared scope", "declared scopes") + "\n");
         for (var g : groups) {
             out.append('\n').append(g).append('\n');
-            Counts.inGroup(db, g).forEach(p -> out.append("  ").append(p.coords())
+            Catalog.get().inGroup(g).forEach(p -> out.append("  ").append(p.coords())
                     .append("   ").append(p.root()).append('\n'));
         }
         if (groups.isEmpty()) out.append("# none. jacli scope --suggest proposes some, "
@@ -78,8 +74,8 @@ public final class ScopeCmd implements Callable<Integer> {
         return groups.isEmpty() ? 1 : 0;
     }
 
-    int show(com.arcadedb.database.Database db, String group) {
-        var members = Counts.inGroup(db, group);
+    int show(String group) {
+        var members = Catalog.get().inGroup(group);
         var out = new StringBuilder("# scope " + group + ": "
                 + littlejlib.jacli.query.Fmt.plural(members.size(), "project", "projects") + "\n");
         members.forEach(p -> out.append("  ").append(p.coords()).append("   ").append(p.root()).append('\n'));
@@ -100,29 +96,28 @@ public final class ScopeCmd implements Callable<Integer> {
      * directory that exists and holds a project is simply indexed here and then added, because that is
      * what the caller was about to be told to do anyway.
      */
-    void set(com.arcadedb.database.Database db, Path raw, String group) {
+    void set(Path raw, String group) {
         var dir = Cwd.resolve(raw);
         if (group != null && !Files.exists(dir))
             throw new IllegalArgumentException("no such path: " + dir
                     + " - that is how it resolved, so compare it with what you typed");
         var root = Projects.findRoot(dir);
         var pid = Home.token(root);
-        if (Counts.project(db, pid) == null) {
+        if (Catalog.get().project(pid) == null) {
             if (group == null) {
                 System.out.println("# " + root + " is not indexed, so it was in no scope; nothing to remove");
                 return;
             }
             index(root);
         }
-        db.transaction(() -> Upsert.upsert(db, JProject.TYPEDEF)
-                .key(JProject.$projectId, pid).set(JProject.$scopeGroup, group).save());
+        Catalog.get().update(pid, row -> row.scopeGroup(group));
     }
 
     /** Index a member being added to a scope, reporting it, since it is the slow part of the call. */
     void index(Path root) {
         System.out.println("# indexing " + root + " so it can join the scope");
         var shared = ServerContext.index();
-        var index = shared != null ? shared : new ProjectIndex(Db.get().db());
+        var index = shared != null ? shared : new ProjectIndex();
         var store = index.ensure(root, common.tests, false, common.log());
         System.out.println("#   " + store.meta().line());
     }
@@ -132,8 +127,8 @@ public final class ScopeCmd implements Callable<Integer> {
      * indexed project here, is a sibling by definition. {@code deps} and {@code projects} already know
      * both halves, so the proposal is free.
      */
-    int suggest(com.arcadedb.database.Database db) {
-        var indexed = Counts.all(db);
+    int suggest() {
+        var indexed = Catalog.get().all();
         var byCoords = new HashMap<String, JProject>();
         indexed.forEach(p -> {
             if (p.coords() != null) byCoords.put(coordKey(p.coords()), p);

@@ -14,8 +14,8 @@ public final class ProjectsCmd implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        try {
-            var rows = Counts.all(Db.get().db());
+        {
+            var rows = Catalog.get().all();
             var out = new StringBuilder("# " + rows.size() + " indexed projects\n");
             var adHoc = 0;
             for (var p : rows) {
@@ -41,8 +41,6 @@ public final class ProjectsCmd implements Callable<Integer> {
                     .append("# and jacli cache --forget <dir> drops one entry without touching the others.\n");
             System.out.print(out);
             return rows.isEmpty() ? 1 : 0;
-        } finally {
-            if (ServerContext.index() == null) Db.shutdown();
         }
     }
 

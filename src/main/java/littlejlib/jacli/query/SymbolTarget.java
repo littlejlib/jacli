@@ -54,7 +54,7 @@ public record SymbolTarget(List<Decl> decls, List<String> specKeys, List<String>
     /** Every occurrence regardless of a {@code --kind} filter, so an empty filtered result can say so. */
     public int totalOccurrences(Store store) {
         var n = 0;
-        for (var k : keys) n += store.refsTo(k).size();
+        for (var k : keys) n += store.refCount(k);
         return n;
     }
 

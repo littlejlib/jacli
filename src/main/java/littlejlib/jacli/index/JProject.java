@@ -1,14 +1,15 @@
 package littlejlib.jacli.index;
 
-import datapotter.arcadedbhelper.ArcadeData;
-import datapotter.arcadedbhelper.TypeDef;
+import datapotter.datahelper.Data;
 
 /**
  * One indexed project (a maven reactor root, so a multi-module build is one row and cross-module
  * queries need no extra registration). Everything needed to decide whether an answer is trustworthy
  * lives here, because that verdict has to survive a process restart along with the index itself.
+ * <p>
+ * Rows live in the catalog file; the declarations and references live in the project's own pack.
  */
-@ArcadeData
+@Data
 public final class JProject extends JProject_A {
 
     String projectId;
@@ -33,10 +34,5 @@ public final class JProject extends JProject_A {
      * fingerprints cannot catch that — the sources are identical, only our reading of them improved —
      * so without this a semantic fix silently keeps serving rows produced by the old, wrong code.
      */
-    public static final int FORMAT = 5;
-
-    public static final TypeDef<JProject> TYPEDEF = schemaBuilder()
-            .factory(JProject::new)
-            .unique($projectId)
-            .__();
+    public static final int FORMAT = 6;
 }

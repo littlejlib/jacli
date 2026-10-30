@@ -58,13 +58,11 @@ public final class DepsCmd implements Callable<Integer> {
         } catch (RuntimeException e) {
             System.err.println("jacli: " + e.getMessage());
             return littlejlib.jacli.query.Answer.NOT_INDEXED;
-        } finally {
-            if (common.ownsDb()) littlejlib.jacli.index.Db.shutdown();
         }
     }
 
     int listDependents() {
-        var roots = littlejlib.jacli.index.Counts.all(littlejlib.jacli.index.Db.get().db()).stream()
+        var roots = littlejlib.jacli.index.Catalog.get().all().stream()
                 .map(littlejlib.jacli.index.JProject::root).filter(Objects::nonNull).map(Path::of).toList();
         var hits = DepGraph.dependentsAmong(roots, dependents);
         var out = new StringBuilder("# projects depending on " + dependents + "\n");

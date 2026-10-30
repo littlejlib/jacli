@@ -13,10 +13,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <main.class>littlejlib.jacli.JacliCli</main.class>
         <exec.mainClass>${main.class}</exec.mainClass>
-        <arcadedb.version>26.7.3</arcadedb.version>
-        <!-- These are arcadedbhelper versions, not datahelper ones. From 2.0 its two modules move
-             on one version line, so a single property covers the runtime and the processor. -->
-        <arcadedbhelper.version>2.0</arcadedbhelper.version>
+        <datahelper.version>1.3</datahelper.version>
         <gson.version>2.14.0</gson.version>
         <picocli.version>4.7.7</picocli.version>
         <jsoup.version>1.22.2</jsoup.version>
@@ -35,17 +32,14 @@
             <version>${picocli.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.arcadedb</groupId>
-            <artifactId>arcadedb-engine</artifactId>
-            <version>${arcadedb.version}</version>
+            <groupId>io.github.datapotter</groupId>
+            <artifactId>datapotter-datahelper-annotations</artifactId>
+            <version>1.1</version>
         </dependency>
-        <!-- arcadedb-server is deliberately absent: the index is opened with DatabaseFactory, so the
-             HTTP server, undertow, swagger and micrometer would all be dead weight on the startup
-             path of a CLI that is called hundreds of times per session. -->
         <dependency>
             <groupId>io.github.datapotter</groupId>
-            <artifactId>datapotter-arcadedbhelper</artifactId>
-            <version>${arcadedbhelper.version}</version>
+            <artifactId>datapotter-datahelper-base</artifactId>
+            <version>${datahelper.version}</version>
         </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>
@@ -67,7 +61,7 @@
             <artifactId>org.eclipse.jgit</artifactId>
             <version>${jgit.version}</version>
         </dependency>
-        <!-- JGit drags in slf4j-api 1.7, which wins over the 2.x binding arcadedb brings and makes
+        <!-- JGit drags in slf4j-api 1.7, which wins over the 2.x binding and makes
              every run print "Failed to load class StaticLoggerBinder". Pin the api to match. -->
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -114,8 +108,8 @@
                     <annotationProcessorPaths>
                         <path>
                             <groupId>io.github.datapotter</groupId>
-                            <artifactId>datapotter-arcadedbhelper-processor</artifactId>
-                            <version>${arcadedbhelper.version}</version>
+                            <artifactId>datapotter-datahelper-processor</artifactId>
+                            <version>${datahelper.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
@@ -138,15 +132,6 @@
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
-                                <!-- Keep OUR arcadedb-log.properties, drop the engine copy whose FileHandler
-                                     writes ./log/arcadedb.log into the working directory. See the tutorial:
-                                     the ArcadeDB notes in project-journals. -->
-                                <filter>
-                                    <artifact>com.arcadedb:arcadedb-engine</artifact>
-                                    <excludes>
-                                        <exclude>arcadedb-log.properties</exclude>
-                                    </excludes>
-                                </filter>
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
@@ -202,13 +187,32 @@
                             <jvmMode>dll</jvmMode>
                             <aot>true</aot>
                             <jar>${project.basedir}/shade/${project.artifactId}.jar</jar>
-                            <vmArgs><vmArg>-Xlog:aot*=off</vmArg></vmArgs>
+                            <vmArgs><vmArg>-Xlog:aot*=off</vmArg><vmArg>-XX:+UseSerialGC</vmArg></vmArgs>
                         </configuration>
                         <executions>
                             <execution>
                                 <id>jacli</id>
                                 <goals><goal>exe</goal></goals>
                                 <configuration><name>jacli</name></configuration>
+                            </execution>
+                            <execution>
+                                <id>daemon</id>
+                                <goals><goal>exe</goal></goals>
+                                <configuration>
+                                    <name>jacli-daemon</name>
+                                    <appArgs><appArg>serve-daemon</appArg></appArgs>
+                                    <vmArgs>
+                                        <vmArg>-Xms16m</vmArg>
+                                        <vmArg>-Xmx1g</vmArg>
+                                        <vmArg>-XX:+UseSerialGC</vmArg>
+                                        <vmArg>-XX:MinHeapFreeRatio=10</vmArg>
+                                        <vmArg>-XX:MaxHeapFreeRatio=30</vmArg>
+                                        <vmArg>-XX:MaxMetaspaceSize=256m</vmArg>
+                                        <vmArg>-XX:MaxDirectMemorySize=256m</vmArg>
+                                        <vmArg>-XX:ReservedCodeCacheSize=96m</vmArg>
+                                        <vmArg>-Xlog:aot*=off</vmArg>
+                                    </vmArgs>
+                                </configuration>
                             </execution>
                             <execution>
                                 <id>symbols</id>

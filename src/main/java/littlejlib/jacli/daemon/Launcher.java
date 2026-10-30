@@ -29,12 +29,26 @@ public final class Launcher {
     static final long MAX_LOG_BYTES = 8L * 1024 * 1024;
     static final int KEEP = 3;
 
+    public static final String SERVE = "serve-daemon", DAEMON_EXE = "jacli-daemon.exe";
+
+    /** What caps the daemon when it has to be started from plain java; jacli-daemon.exe bakes the same flags in. */
+    static final List<String> JVM_FLAGS = List.of("-Xms16m", "-Xmx1g", "-XX:+UseSerialGC", "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=30", "-XX:MaxMetaspaceSize=256m", "-XX:MaxDirectMemorySize=256m",
+            "-XX:ReservedCodeCacheSize=96m", "-Xlog:aot*=off");
+
     static void spawn(Consumer<String> log) throws IOException {
         var cmd = new ArrayList<String>();
-        cmd.add(javaBinary());
-        cmd.add("-cp");
-        cmd.add(classpath());
-        cmd.add(Server.class.getName());
+        var exe = daemonExe();
+        if (exe != null) {
+            cmd.add(exe.toString());
+            cmd.add(SERVE);
+        } else {
+            cmd.add(javaBinary());
+            cmd.addAll(JVM_FLAGS);
+            cmd.add("-cp");
+            cmd.add(classpath());
+            cmd.add(Server.class.getName());
+        }
         log.accept("starting daemon: " + String.join(" ", cmd));
         var logFile = Home.file(LOG);
         rotate(logFile);
@@ -70,6 +84,14 @@ public final class Launcher {
         } catch (IOException e) {
             // Not worth failing a daemon start over.
         }
+    }
+
+    /** jacli-daemon.exe beside the running jacli.exe, or null when jacli runs from a jar or classes folder. */
+    static Path daemonExe() {
+        return ProcessHandle.current().info().command()
+                .map(c -> Path.of(c).resolveSibling(DAEMON_EXE))
+                .filter(Files::isRegularFile)
+                .orElse(null);
     }
 
     static String javaBinary() {

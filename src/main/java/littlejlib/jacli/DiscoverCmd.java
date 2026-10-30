@@ -85,12 +85,10 @@ public final class DiscoverCmd implements Callable<Integer> {
     /** Absolute roots already in the index, so each hit can say whether it is new. */
     Set<Path> indexedRoots() {
         try {
-            return Counts.all(Db.get().db()).stream().map(JProject::root).filter(Objects::nonNull)
+            return Catalog.get().all().stream().map(JProject::root).filter(Objects::nonNull)
                     .map(Path::of).collect(Collectors.toSet());
         } catch (RuntimeException e) {
             return Set.of();
-        } finally {
-            if (ServerContext.index() == null) Db.shutdown();
         }
     }
 }

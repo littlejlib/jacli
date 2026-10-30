@@ -77,8 +77,6 @@ public final class ApiCmd implements Callable<Integer> {
         } catch (IllegalStateException e) {
             System.err.println("jacli: " + e.getMessage());
             return Answer.NOT_INDEXED;
-        } finally {
-            if (common.ownsDb()) littlejlib.jacli.index.Db.shutdown();
         }
     }
 }

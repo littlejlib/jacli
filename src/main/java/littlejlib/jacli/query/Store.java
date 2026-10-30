@@ -5,7 +5,7 @@ import littlejlib.jacli.core.*;
 
 /**
  * The primitive lookups every verb is built from. Two implementations: an in-memory one for
- * {@code --direct} and for tests, and the ArcadeDB one the daemon uses. Verbs are written once,
+ * {@code --direct} and for tests, and the pack-backed one the daemon uses. Verbs are written once,
  * against this, so a query cannot behave differently depending on which is in play.
  */
 public interface Store {
@@ -20,6 +20,8 @@ public interface Store {
     Optional<Decl> declByKey(String key);
 
     List<Occurrence> refsTo(String targetKey);
+
+    default int refCount(String targetKey) { return refsTo(targetKey).size(); }
 
     List<Occurrence> refsFrom(String enclosingKey);
 

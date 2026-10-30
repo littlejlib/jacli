@@ -132,7 +132,7 @@ public final class Discover {
                 sb.append('\n').append(owner).append('\n');
             }
             sb.append("  ").append(d.signature());
-            if (counts) sb.append("   ").append(store.refsTo(d.key()).size()).append(" refs");
+            if (counts) sb.append("   ").append(store.refCount(d.key())).append(" refs");
             sb.append('\n');
             if (withDoc && d.doc() != null) sb.append("      ").append(d.doc()).append('\n');
             if (opts.withCode()) sb.append(codeOf(store, d));

@@ -63,7 +63,6 @@ DEPENDENCIES (no compilation; poms only on maven)
 
   jacli index [--watch] | projects | cache | status | daemon
   jacli cache --forget <dir>      drop ONE project from the index, leaving the rest
-  jacli cache --repair            if a verb says "index rows could not be read" - rebuilds structures, reindexes nothing. --reindex does NOT fix that.
   -p at a directory that CONTAINS projects rather than being one is refused, with the roots listed. `jacli projects` flags any such entry already indexed.
 
 A DEPENDENCY / A JAR IN ~/.m2 / A LIBRARY YOU HAVE NOT OPENED  -  this is the javap replacement

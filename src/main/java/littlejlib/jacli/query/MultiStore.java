@@ -64,6 +64,8 @@ public final class MultiStore implements Store {
 
     @Override public List<Occurrence> refsTo(String targetKey) { return flat(s -> s.refsTo(targetKey)); }
 
+    @Override public int refCount(String targetKey) { return stores.stream().mapToInt(s -> s.refCount(targetKey)).sum(); }
+
     @Override public List<Occurrence> refsFrom(String enclosingKey) { return flat(s -> s.refsFrom(enclosingKey)); }
 
     @Override public List<Decl> declsWithSuper(String key) { return dedupe(flat(s -> s.declsWithSuper(key))); }

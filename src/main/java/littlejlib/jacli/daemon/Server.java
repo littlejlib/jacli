@@ -4,16 +4,17 @@ import module java.base;
 import littlejlib.jacli.index.*;
 
 /**
- * The resident half. Holds the ArcadeDB index open and a warm javac file manager per project, which
+ * The resident half. Keeps a warm javac file manager per project, which
  * together are the difference between a 4 second warm call and a 100 millisecond one.
  * <p>
  * Requests are executed one at a time under a lock. Claude Code issues parallel tool calls, but
- * neither embedded ArcadeDB nor a JavacTask is thread safe, and a query costs milliseconds — so
+ * a JavacTask is not thread safe, and a query costs milliseconds — so
  * queueing is both correct and cheap, where concurrency would be neither.
  */
 public final class Server {
 
     public static final int IDLE_SHUTDOWN_MINUTES = 360, ACCEPT_BACKLOG = 32;
+    public static final Duration IDLE_TRIM_AFTER = Duration.ofMinutes(2);
 
     final ProjectIndex index;
     final ServerSocket socket;
@@ -26,7 +27,7 @@ public final class Server {
 
     Server() throws IOException {
         socket = new ServerSocket(0, ACCEPT_BACKLOG, InetAddress.getLoopbackAddress());
-        index = new ProjectIndex(Db.get().db());
+        index = new ProjectIndex();
         ServerContext.install(index);
         hot = new Hot(index::release);
         index.freshness(hot);
@@ -43,6 +44,13 @@ public final class Server {
         Runtime.getRuntime().addShutdownHook(new Thread(this::cleanup, "jacli-shutdown"));
         watcher.start();
         idleWatchdog();
+        IdleTrim.start(() -> {
+            var request = Instant.ofEpochMilli(lastRequest.get());
+            return request.isAfter(IdleTrim.worked) ? request : IdleTrim.worked;
+        }, IDLE_TRIM_AFTER, () -> {
+            index.closeWarm();
+            Packs.release();
+        });
         System.err.println("jacli daemon listening on " + socket.getLocalPort() + ", build " + Build.STAMP);
         var pool = Executors.newCachedThreadPool(Server::daemonThread);
         while (!stopping.get()) {
@@ -121,6 +129,7 @@ public final class Server {
                 } catch (InterruptedException e) {
                     return;
                 }
+                hot.evictExcess();
                 var idleMinutes = Duration.ofMillis(System.currentTimeMillis() - lastRequest.get()).toMinutes();
                 if (idleMinutes >= IDLE_SHUTDOWN_MINUTES) {
                     System.err.println("jacli daemon idle for " + idleMinutes + " min, shutting down");
@@ -150,7 +159,6 @@ public final class Server {
         watcher.stop();
         hot.closeAll();
         index.closeWarm();
-        Db.shutdown();
         Info.clear();
     }
 }

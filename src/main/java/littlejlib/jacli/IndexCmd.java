@@ -6,7 +6,6 @@ import littlejlib.jacli.proj.*;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
-import datapotter.arcadedbhelper.Upsert;
 
 @Command(name = "index", description = "Index a project now, and optionally keep watching it.",
         footer = {
@@ -50,16 +49,10 @@ public final class IndexCmd implements Callable<Integer> {
         } catch (IllegalStateException e) {
             System.err.println("jacli: " + e.getMessage());
             return littlejlib.jacli.query.Answer.NOT_INDEXED;
-        } finally {
-            if (common.ownsDb()) Db.shutdown();
         }
     }
 
     void setWatched(Path root, boolean on) {
-        var db = Db.get().db();
-        db.transaction(() -> Upsert.upsert(db, JProject.TYPEDEF)
-                .key(JProject.$projectId, Home.token(root))
-                .set(JProject.$watched, on)
-                .save());
+        Catalog.get().update(Home.token(root), row -> row.watched(on));
     }
 }

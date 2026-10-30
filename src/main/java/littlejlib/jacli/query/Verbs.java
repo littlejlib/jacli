@@ -62,7 +62,7 @@ public final class Verbs {
             var subs = store.declsWithSuper(d.key());
             sb.append("# ").append(Fmt.precise(d)).append(": ");
             sb.append(store.meta().hasReferences()
-                    ? store.refsTo(d.key()).size() + " references"
+                    ? store.refCount(d.key()) + " references"
                     : "references not indexed for this target");
             if (!subs.isEmpty()) sb.append(", ").append(subs.size())
                     .append(d.kind().isType() ? " subtypes/implementations" : " overriders");
@@ -168,7 +168,7 @@ public final class Verbs {
              * name were a typo would re-teach exactly the misconception that refs cannot cross a
              * project boundary. Say what is true and name the verbs that do work. */
             var keys = usedHere(store, spec);
-            var uses = keys.stream().mapToInt(k -> store.refsTo(k).size()).sum();
+            var uses = keys.stream().mapToInt(store::refCount).sum();
             sb.append("# '").append(spec.raw()).append("' is NOT DECLARED in this project, but it IS used here")
                     .append(" - ").append(Fmt.plural(uses, "reference", "references")).append(".\n")
                     .append("# ").append(verb).append(" needs the declaration; these do not:\n")

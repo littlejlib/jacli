@@ -3,7 +3,6 @@ package littlejlib.jacli.daemon;
 import module java.base;
 import littlejlib.jacli.index.*;
 import static java.nio.file.StandardWatchEventKinds.*;
-import static datapotter.arcadedbhelper.Query.query;
 
 /**
  * Two threads over the hot set.
@@ -20,6 +19,9 @@ import static datapotter.arcadedbhelper.Query.query;
 public final class Watcher {
 
     public static final Duration SAFETY_NET = Duration.ofSeconds(45), SETTLE = Duration.ofMillis(250);
+
+    /** A hot project nobody has asked about for this long is left alone by the safety net: its watch still reports changes. */
+    static final int IDLE_MINUTES = 2;
 
     final ProjectIndex index;
     final Hot hot;
@@ -97,8 +99,10 @@ public final class Watcher {
             } catch (InterruptedException e) {
                 return;
             }
-            hot.markAllDirty();
-            hot.all().stream().map(HotProject::pid).toList().forEach(this::refresh);
+            hot.all().stream().filter(hp -> hp.idleMinutes() < IDLE_MINUTES).toList().forEach(hp -> {
+                hp.markDirty();
+                refresh(hp.pid());
+            });
         }
     }
 
@@ -106,9 +110,11 @@ public final class Watcher {
     void refresh(String pid) {
         var hp = hot.get(pid);
         if (hp == null || !hp.dirty.get()) return;
+        IdleTrim.touched();
         try {
             index.ensure(hp.root(), false, false,
                     s -> System.err.println("jacli watch: " + hp.root().getFileName() + ": " + s));
+            IdleTrim.touched();
         } catch (RuntimeException e) {
             System.err.println("jacli watch: " + hp.root() + ": " + e);
         }
@@ -116,8 +122,8 @@ public final class Watcher {
 
     List<Path> pinnedFromIndex() {
         try {
-            return query(Db.get().db(), JProject.TYPEDEF).eq(JProject.$watched, Boolean.TRUE)
-                    .stream().map(JProject::root).filter(Objects::nonNull).map(Path::of)
+            return Catalog.get().all().stream().filter(p -> Boolean.TRUE.equals(p.watched()))
+                    .map(JProject::root).filter(Objects::nonNull).map(Path::of)
                     .filter(Files::isDirectory).toList();
         } catch (RuntimeException e) {
             System.err.println("jacli watch: could not read pinned projects: " + e);
