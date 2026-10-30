@@ -62,6 +62,7 @@ DEPENDENCIES (no compilation; poms only on maven)
   On gradle the graph is gradle's own resolution result, but nothing records WHICH repo served a jar - so the verdict reads the declared repositories, and mavenLocal() is the blocker it names.
 
   jacli index [--watch] | projects | cache | status | daemon
+  jacli install | update [--check] | claude install    put jacli on this machine, keep it current, put it in front of Claude Code
   jacli cache --forget <dir>      drop ONE project from the index, leaving the rest
   -p at a directory that CONTAINS projects rather than being one is refused, with the roots listed. `jacli projects` flags any such entry already indexed.
 

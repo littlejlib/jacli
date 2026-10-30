@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.littlejlib</groupId>
     <artifactId>littlejlib-jacli</artifactId>
-    <version>0.1</version>
+    <version>0.2</version>
     <packaging>jar</packaging>
 
     <description>jacli - java assist cli. Semantic code navigation (find usages, call hierarchy, type queries) over java/maven projects for AI coding agents, backed by an indexing daemon.</description>
@@ -40,6 +40,11 @@
             <groupId>io.github.datapotter</groupId>
             <artifactId>datapotter-datahelper-base</artifactId>
             <version>${datahelper.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.jarrunner</groupId>
+            <artifactId>jr-apputils</artifactId>
+            <version>1.1</version>
         </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>
@@ -167,8 +172,9 @@
         </plugins>
     </build>
 
-    <!-- The cmdtools launcher(s), built by jr-maven-plugin with the config baked in (replaces the .jrc):
-             mvn -Djrexe -Djr.installDir=<folder on PATH> package -->
+    <!-- The launchers, built by jr-maven-plugin with the config baked in (replaces the .jrc):
+             mvn -Djrexe -Djr.installDir=<folder on PATH> package       for this machine
+             mvn -Djrexe -Djr.source=url package                        a release: target/jr/release-<name> per exe (release.ps1 gathers them) -->
     <profiles>
         <profile>
             <id>jrexe</id>
@@ -186,20 +192,34 @@
                         <configuration>
                             <jvmMode>dll</jvmMode>
                             <aot>true</aot>
+                            <javaVersion>25+</javaVersion>
                             <jar>${project.basedir}/shade/${project.artifactId}.jar</jar>
                             <vmArgs><vmArg>-Xlog:aot*=off</vmArg><vmArg>-XX:+UseSerialGC</vmArg></vmArgs>
+                            <jarUrl>https://github.com/littlejlib/jacli/releases/download/v${project.version}/jacli.jar</jarUrl>
+                            <companyName>littlejlib</companyName>
+                            <supportName>littlejlib</supportName>
+                            <supportIssues>https://github.com/littlejlib/jacli/issues</supportIssues>
+                            <supportUrl>https://github.com/littlejlib/jacli</supportUrl>
                         </configuration>
                         <executions>
                             <execution>
                                 <id>jacli</id>
                                 <goals><goal>exe</goal></goals>
-                                <configuration><name>jacli</name></configuration>
+                                <configuration>
+                                    <name>jacli</name>
+                                    <appId>io.github.littlejlib:jacli</appId>
+                                    <updateUrl>https://github.com/littlejlib/jacli/releases/latest/download/jacli.update.json</updateUrl>
+                                    <releaseDirectory>${project.build.directory}/jr/release-jacli</releaseDirectory>
+                                </configuration>
                             </execution>
                             <execution>
                                 <id>daemon</id>
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>jacli-daemon</name>
+                                    <appId>io.github.littlejlib:jacli-daemon</appId>
+                                    <updateUrl>https://github.com/littlejlib/jacli/releases/latest/download/jacli-daemon.update.json</updateUrl>
+                                    <releaseDirectory>${project.build.directory}/jr/release-jacli-daemon</releaseDirectory>
                                     <appArgs><appArg>serve-daemon</appArg></appArgs>
                                     <vmArgs>
                                         <vmArg>-Xms16m</vmArg>
@@ -217,11 +237,17 @@
                             <execution>
                                 <id>symbols</id>
                                 <goals><goal>exe</goal></goals>
-                                <configuration><name>symbols</name></configuration>
+                                <configuration>
+                                    <name>symbols</name>
+                                    <appId>io.github.littlejlib:symbols</appId>
+                                    <updateUrl>https://github.com/littlejlib/jacli/releases/latest/download/symbols.update.json</updateUrl>
+                                    <releaseDirectory>${project.build.directory}/jr/release-symbols</releaseDirectory>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
                 </plugins>
             </build>
         </profile>
-    </profiles></project>
+    </profiles>
+</project>

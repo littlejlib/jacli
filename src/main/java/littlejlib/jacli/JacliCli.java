@@ -2,17 +2,19 @@ package littlejlib.jacli;
 
 import module java.base;
 import littlejlib.jacli.daemon.*;
+import littlejlib.jacli.release.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "jacli", mixinStandardHelpOptions = true, version = "jacli 0.1",
+@Command(name = "jacli", mixinStandardHelpOptions = true, versionProvider = Version.class,
         synopsisSubcommandLabel = "<verb>",
         description = "jacli (jack-lee) - java assist cli. Compiler-accurate code navigation over java/maven projects.",
         subcommands = { TreeCmd.class, ApiCmd.class, RefsCmd.class, DefCmd.class, SrcCmd.class, AtCmd.class,
                 CallersCmd.class, CalleesCmd.class, ImplsCmd.class, UnusedCmd.class, DepsCmd.class,
                 ReleasableCmd.class, DiscoverCmd.class, ScopeCmd.class, IndexCmd.class, ProjectsCmd.class,
-                CacheCmd.class, StatusCmd.class, DaemonCmd.class, TutorialCmd.class, littlejlib.jacli.claude.ClaudeCmd.class })
+                CacheCmd.class, StatusCmd.class, DaemonCmd.class, TutorialCmd.class, littlejlib.jacli.claude.ClaudeCmd.class,
+                InstallCmd.class, UpdateCmd.class })
 public final class JacliCli implements Callable<Integer> {
 
     @Option(names = "--brief", description = "Print the short help. This is now the default; kept so older invocations still work.")
@@ -28,18 +30,29 @@ public final class JacliCli implements Callable<Integer> {
         }
         utf8Out();
         var argv = List.of(args);
-        if (runsLocally(argv)) System.exit(runHere(args));
+        if (wantsNotice(argv)) UpdateNotice.start();
+        if (runsLocally(argv)) exit(runHere(args));
         var log = logger(argv);
         try {
             var response = Client.send(argv, true, log);
             System.out.print(response.stdout());
             System.err.print(response.stderr());
-            System.exit(response.exit());
+            exit(response.exit());
         } catch (IOException e) {
             System.err.println("jacli: daemon unavailable (" + e.getMessage()
                     + "); answering in this process, which is slower");
-            System.exit(runHere(args));
+            exit(runHere(args));
         }
+    }
+
+    static void exit(int code) {
+        UpdateNotice.show();
+        System.exit(code);
+    }
+
+    /** Not for the commands that manage jacli itself, nor for the hooks, which run on every prompt. */
+    static boolean wantsNotice(List<String> args) {
+        return args.isEmpty() || !Set.of("install", "update", "claude", "daemon", "--version", "-V").contains(args.getFirst());
     }
 
     /**
@@ -91,7 +104,7 @@ public final class JacliCli implements Callable<Integer> {
      */
     static boolean runsLocally(List<String> args) {
         if (args.isEmpty() || args.getFirst().startsWith("-")) return true;
-        if ("daemon".equals(args.getFirst()) || "claude".equals(args.getFirst())) return true;
+        if (Set.of("daemon", "claude", "install", "update").contains(args.getFirst())) return true;
         return args.stream().anyMatch(a -> a.equals("--direct") || a.equals("--syntactic")
                 || a.equals("--help") || a.equals("-h"));
     }

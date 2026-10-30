@@ -100,7 +100,7 @@ A pack that cannot be read is deleted and rebuilt on that project's next query; 
 mvn test
 ```
 
-77 tests, a few seconds, offline. Most exist because a field tester found the defect first: `api` on interfaces, `--overrides` tripping the ambiguity guard, package scopes parsed as member specs, a `--kind` filter claiming a symbol was unused, optional and pom-type dependencies reported as release blockers. They run against self-contained fixture projects with no dependencies, so javac resolves them against the platform alone, and no test is allowed to launch maven or gradle — they pin the engine's semantics rather than the state of this machine.
+A couple of minutes, offline. Most exist because a field tester found the defect first: `api` on interfaces, `--overrides` tripping the ambiguity guard, package scopes parsed as member specs, a `--kind` filter claiming a symbol was unused, optional and pom-type dependencies reported as release blockers. They run against self-contained fixture projects with no dependencies, so javac resolves them against the platform alone, and no test is allowed to launch maven or gradle — they pin the engine's semantics rather than the state of this machine.
 
 The gradle fixture is built out of the ways a real build defeats a naive reader: a commented-out `include`, a subproject directory the settings file no longer lists, coordinates that exist only in `libs.versions.toml`, a test-only dependency, an `includeBuild`, and a settings file whose includes are computed rather than written.
 
@@ -108,12 +108,31 @@ Every one of them has been checked to fail when its fix is reverted. A regressio
 
 ## Install
 
+On Windows, in cmd or PowerShell (`curl.exe` ships with Windows 10 and 11):
+
 ```
-mvn package
-copy C:\user\code\xyz-jphil\jr\jr.exe  C:\user\Apps\cmdtools\jacli.exe
+curl.exe -fLo jacli.exe https://github.com/littlejlib/jacli/releases/latest/download/jacli.exe
+.\jacli.exe install
 ```
 
-`C:\user\Apps\cmdtools\jacli.jrc` points the launcher at `shade\littlejlib-jacli.jar` with the JDK 25 AOT cache on, which is what keeps a warm call under a second. Index, classpath cache and daemon state live in `~\littlejlib\jacli\`.
+Then, once, to put jacli in front of Claude Code (its agent prompt and hooks, embedded in the jar):
+
+```
+jacli claude install
+```
+
+`install` copies `jacli.exe`, `jacli-daemon.exe` and `symbols.exe` to `%LOCALAPPDATA%\Programs\jacli` and puts that folder first on your user PATH; no administrator rights, and running it again repairs the install (`--no-path` leaves PATH alone, `--dir <folder>` installs elsewhere). The exes are [jr](https://github.com/jarrunner/jr) launchers: on first run each fetches the release's jar (checked against the SHA-256 baked into it) and, if there is no Java 25 on the machine, offers to download one. The JDK 25 AOT cache it builds is what keeps a warm call under a second.
+
+```
+jacli update            move all three exes to the newest release (stops the daemon first)
+jacli update --check    only say whether there is one: exit 0 current, 10 newer, 1 error
+```
+
+jacli also checks once a day, in the background, and says so on stderr when a newer release is out.
+
+Index, classpath cache and daemon state live in `~\littlejlib\jacli\`.
+
+To build it yourself: `mvn package` gives `shade\littlejlib-jacli.jar`, and `mvn -Djrexe -Djr.installDir=<a folder on your PATH> package` builds the three exes that run it. `release.ps1` publishes a release.
 
 After rebuilding, nothing needs restarting by hand: the client sends the build stamp it expects and the daemon stops and restarts itself if it is running older code.
 
