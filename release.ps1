@@ -38,7 +38,8 @@ if (-not $DryRun) {
 
 Write-Host "building $tag"
 for ($i = 1; $i -le 4; $i++) {
-    & mvn -B -q -Djrexe -Djr.source=url clean package
+    # quoted: PowerShell 5.1 splits an unquoted -Dname.with.dots=value into two arguments
+    & mvn -B -q '-Djrexe' '-Djr.source=url' clean package
     if ($LASTEXITCODE -eq 0) { break }
     if ($i -eq 4) { throw 'mvn package failed' }
     Write-Host "build attempt $i failed, retrying"
@@ -85,4 +86,4 @@ foreach ($name in @('jacli.update.json', 'jacli-daemon.update.json', 'symbols.up
     if ($LASTEXITCODE -ne 0) { Write-Host "  BAD  latest/download/$name"; $bad++ } else { Write-Host "  ok   latest/download/$name" }
 }
 if ($bad) { throw "$bad asset(s) did not verify - re-upload with: $gh release upload $tag <file> --clobber --repo $repo" }
-Write-Host "published $tag: https://github.com/$repo/releases/tag/$tag"
+Write-Host "published ${tag}: https://github.com/$repo/releases/tag/$tag"
