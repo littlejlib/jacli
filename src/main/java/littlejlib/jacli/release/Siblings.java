@@ -53,7 +53,28 @@ public final class Siblings {
         throw new IOException("SHA256SUMS does not list " + name);
     }
 
+    /** Four tries a second or more apart: a connection that drops mid-install must not leave jacli without its daemon. */
     static byte[] get(String url) throws IOException {
+        return retrying(4, 1000, () -> once(url));
+    }
+
+    static <T> T retrying(int tries, long pauseMs, Callable<T> action) throws IOException {
+        for (var attempt = 1; ; attempt++) {
+            try {
+                return action.call();
+            } catch (Exception e) {
+                if (attempt >= tries) throw e instanceof IOException io ? io : new IOException(e);
+                try {
+                    Thread.sleep(pauseMs * attempt);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted", interrupted);
+                }
+            }
+        }
+    }
+
+    static byte[] once(String url) throws IOException {
         var c = URI.create(url).toURL().openConnection();
         c.setConnectTimeout(15_000);
         c.setReadTimeout(60_000);

@@ -40,6 +40,24 @@ class ReleaseTest {
     }
 
     @Test
+    void aDroppedConnectionIsRetriedThenGivenUp() throws IOException {
+        var calls = new int[1];
+        assertEquals("ok", Siblings.retrying(4, 1, () -> {
+            if (++calls[0] < 3) throw new IOException("Connect timed out");
+            return "ok";
+        }));
+        assertEquals(3, calls[0]);
+
+        calls[0] = 0;
+        var e = assertThrows(IOException.class, () -> Siblings.retrying(3, 1, () -> {
+            calls[0]++;
+            throw new IOException("still down");
+        }));
+        assertEquals("still down", e.getMessage());
+        assertEquals(3, calls[0]);
+    }
+
+    @Test
     void sha256IsHex() {
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
                 Siblings.sha256("abc".getBytes(StandardCharsets.UTF_8)));
